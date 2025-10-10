@@ -1,0 +1,23 @@
+# Ignore Python virtual environment folders
+venv/
+.env/
+.venv/
+ENV/
+env/
+
+# Ignore random graphs dataset files
+random_graphs_dataset/
+*.graph
+*.dat
+*.csv
+*.pt
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
