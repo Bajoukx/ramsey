@@ -1,0 +1,235 @@
+"""Ramsey Game Environment for RL using PyTorch Geometric
+
+A Ramsey Game is inpired by the Ramsey's Theorem. Two players take turns
+coloring a red and blue graph with n vertices. The winner is the first person to
+color a clique of size 
+
+This file provides RamseyEnv:
+- State: A 2_coloring of a ramsey game in red and blue: 
+    -1  => uncolored
+     0  => color red
+     1  => color blue
+
+- Action: An action is the coloring of an edge. Since coloring can be either
+  red or blue, the number of possible actions is two times the number of edges.
+  In other to ensure compatibility with other python packages, a coloring of
+  edge with index i is encoded into [0, 2*n_edges[, where the first n_edges
+  are red and the rest blue.
+"""
+
+from typing import Optional, Tuple, List, Union, Dict
+import itertools
+
+import torch
+from torch import Tensor
+import networkx
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+
+import clique_algorithms
+import rewards
+
+
+class RamseyEnv():
+    """Gym-like environment for Ramsey Games."""
+
+    def __init__(
+        self,
+        n_vertices: int,
+        n_red_edges: int,
+        n_blue_edges: int,
+        device: Optional[Union[str, torch.device]] = None
+    ) -> None:
+
+        assert n_vertices >= 1
+        self.n_vertices = n_vertices
+        self.n_red_vertices = n_red_edges
+        self.n_blue_vertices = n_blue_edges
+        self.device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
+
+        self.all_edges = list(itertools.combinations(range(n_vertices), 2))  # list of all edges
+        self.n_edges = len(self.all_edges)
+
+        edge_index = torch.tensor(self.all_edges, dtype=torch.long).t().contiguous()
+        self.base_edge_index = edge_index.to(self.device)  # shape [2, n_edges]
+        
+        self.reset()
+
+    def _init_edges(self) -> Tensor:
+        """Returns a tensor of shape [n_edges] filled with -1 to indicate uncolored."""
+        return -1 * torch.ones(self.n_edges, dtype=torch.float, device=self.device)
+
+    def reset(self):
+        """Resets environment.
+
+        colored_edges: optional mapping {edge_idx: color} to pre-color.
+        """
+        self.colored_edges = self._init_edges()
+        self.done = False
+        self.info = {}
+        self.steps = 0
+        return self.colored_edges
+
+    def encode_action(self, edge_idx: int, color: int) -> int:
+        """Encode (edge_idx, color) -> single integer in [0, E*2[."""
+        assert 0 <= edge_idx < self.n_edges
+        assert color in (0, 1)
+        return edge_idx + color * self.n_edges
+
+    def decode_action(self, action: Union[int, Tuple[int, int]]) -> Tuple[int, int]:
+        """Decode action into (edge_idx, color). Accepts already a tuple."""
+        if isinstance(action, tuple) or isinstance(action, list):
+            edge_idx, color = action
+            return int(edge_idx), int(color)
+        edge_idx = action % self.n_edges
+        color = action // self.n_edges
+        return edge_idx, color
+
+    def list_legal_actions(self) -> List[int]:
+        """Return list of only uncolored edges."""
+        uncolored = (self.colored_edges == -1).nonzero(as_tuple=False).view(-1).cpu().tolist()
+        return sorted([self.encode_action(e, c) for e in uncolored for c in (0, 1)])
+
+    def _edjes_to_adj_dict(self, color: int):
+        colored_edges_idx = (self.colored_edges == color).nonzero(as_tuple=True)[0]
+        adj_dict = {}
+        for idx in colored_edges_idx:
+            u, v = self.base_edge_index[:, idx].tolist()
+            u, v = str(u), str(v)
+
+            adj_dict.setdefault(u, set()).add(v)
+            adj_dict.setdefault(v, set()).add(u)
+        return adj_dict
+    
+    def has_max_clique(self, color: int, size: int) -> bool:
+        """Uses the Bron-Kerbosch algorithm to check if the maximal clique size is in the graph."""
+        adjacency_dict = self._edjes_to_adj_dict(color=color)
+        cliques = clique_algorithms.bron_kerbosch(adjacency_dict)
+        if cliques:
+            len_cliques = [len(clique) for clique in cliques]
+            if max(len_cliques) >= size:
+                #print('found clique:', cliques)
+                return True
+        else:
+            return False
+
+    def step(self, action: Union[int, Tuple[int, int]]):
+        """Apply action. Returns (state, reward, done, info).
+
+        Rewarding scheme:
+          - invalid action (edge already colored): invalid_action_penalty
+          - creating monochromatic clique: terminal_reward_success and done
+          - fully coloring without forbidden cliques: terminal_reward_loss and done
+          - otherwise: 0 reward and continue
+        """
+        if self.done:
+            raise RuntimeError("Episode has finished. Call reset().")
+        action_edge_idx, color = self.decode_action(action)
+        self.steps += 1
+
+        if rewards.is_invalid_action(self, action_edge_idx):
+            print('played invalid action', action_edge_idx, color)
+            reward, done, info = rewards.invalid_action_reward(invalid_action_penalty=-1000)
+            return self.colored_edges, reward, done, info
+
+        reward_type = "hoffman"
+        if reward_type == "simple":            
+            #color the edge
+            self.colored_edges[action_edge_idx] = int(color)
+            reward, done, info = rewards.simple_reward(self, color, terminal_reward_loss=-1.0, terminal_reward_success=1.0)  #TODO: make params
+        
+        if reward_type == "hoffman":
+            self.colored_edges[action_edge_idx] = int(color)
+            reward, done, info = rewards.hoffman_simple_reward(self, color, 8)
+        return self.colored_edges, reward, done, info
+        
+
+    def _render(self) -> None:
+        """Render current graph coloring using networkx and matplotlib."""
+        G = networkx.Graph()
+        G.add_nodes_from(range(self.n_vertices))
+        colors = []
+        for idx, (u, v) in enumerate(self.all_edges):
+            c = self.colored_edges[idx].item()
+            if c == -1:
+                edge_color = "gray"
+            elif c == 0:
+                edge_color = "red"
+            else:
+                edge_color = "blue"
+            G.add_edge(u, v, color=edge_color)
+            colors.append(edge_color)
+
+
+        pos = networkx.spring_layout(G)
+        edge_colors = [G[u][v]['color'] for u, v in G.edges()]
+
+
+        networkx.draw(G, pos, with_labels=True, edge_color=edge_colors, node_color="lightgray", node_size=500)
+        plt.title(f"Ramsey R({self.n_red_vertices},{self.n_blue_vertices}) on K_{self.n_vertices}; step {self.steps}")
+        plt.show()
+    
+    def render(self) -> None:
+        """Render current graph coloring as a live matplotlib animation."""
+        if not hasattr(self, "_fig"):
+            # Initialize figure and graph layout on first call
+            self._fig, self._ax = plt.subplots(figsize=(6, 6))
+            self._G = networkx.Graph()
+            self._G.add_nodes_from(range(self.n_vertices))
+            self._pos = networkx.spring_layout(self._G)  # fixed layout for consistency
+            self._ani = None
+
+            # Draw empty base
+            networkx.draw_networkx_nodes(self._G, self._pos, node_color="lightgray", node_size=500, ax=self._ax)
+            self._edges = networkx.draw_networkx_edges(self._G, self._pos, edge_color="gray", ax=self._ax)
+            self._labels = networkx.draw_networkx_labels(self._G, self._pos, ax=self._ax)
+            self._ax.set_title(f"Ramsey R({self.n_red_vertices},{self.n_blue_vertices}) on K_{self.n_vertices}; step {self.steps}")
+            plt.ion()
+            plt.show(block=False)
+
+        # Update edges each time render() is called
+        self._G.clear_edges()
+        colors = []
+        for idx, (u, v) in enumerate(self.all_edges):
+            c = self.colored_edges[idx].item()
+            if c == -1:
+                edge_color = "gray"
+            elif c == 0:
+                edge_color = "red"
+            else:
+                edge_color = "blue"
+            self._G.add_edge(u, v, color=edge_color)
+            colors.append(edge_color)
+
+        # Redraw with updated colors
+        self._ax.clear()
+        networkx.draw(
+            self._G, self._pos, ax=self._ax,
+            with_labels=True, edge_color=colors,
+            node_color="lightgray", node_size=500
+        )
+        self._ax.set_title(f"Ramsey R({self.n_red_vertices},{self.n_blue_vertices}) on K_{self.n_vertices}; step {self.steps}")
+        self._fig.canvas.draw()
+        self._fig.canvas.flush_events()
+
+
+if __name__ == '__main__':
+    # Small example: attempt to color edges of K_5 to avoid red K3 and blue K3 (classic Ramsey R(3,3)=6)
+    env = RamseyEnv(n_vertices=5, n_red_edges=3, n_blue_edges=3)
+    state = env.reset()
+
+    # naive random rollouts
+    import random
+
+    done = False
+    total_reward = 0.0
+    while not done:
+        legal = env.list_legal_actions()
+        a = random.choice(legal)
+        state, rwd, done, info = env.step(a)
+        total_reward += rwd
+        if rwd != 0:
+            print("Reward", rwd, info)
+        #env.render()
+    print("Episode done, total reward", total_reward)
+    env._render()
