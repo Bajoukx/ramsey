@@ -44,8 +44,8 @@ class RamseyEnv():
         device: Optional[Union[str, torch.device]] = None
     ) -> None:
         """Initialize Ramsey Environment."""
-
-        assert number_of_players == 2
+        if number_of_players not in (1, 2):
+            raise ValueError("number_of_players must be either 1 or 2.")
         self.number_of_players = number_of_players
 
         assert n_vertices >= 1
@@ -63,18 +63,14 @@ class RamseyEnv():
         self.reset()
 
     def _init_edges(self) -> Tensor:
-        """Returns a tensor of shape [n_edges] filled with -1 to indicate uncolored."""
+        """Initializes the graph edges."""
         if self.number_of_players == 2:
             return -1 * torch.ones(self.n_edges, dtype=torch.float, device=self.device)
         if self.number_of_players == 1:
-            return utils.get_initial_coloring(self.n_edges, self.device)
-
+            return utils.get_initial_random_coloring(self.n_edges, self.device)
 
     def reset(self):
-        """Resets environment.
-
-        colored_edges: optional mapping {edge_idx: color} to pre-color.
-        """
+        """Resets environment."""
         self.colored_edges = self._init_edges()
         self.done = False
         self.info = {}
@@ -134,31 +130,33 @@ class RamseyEnv():
           - fully coloring without forbidden cliques: terminal_reward_loss and done
           - otherwise: 0 reward and continue
         """
+        print("action", action)
         if self.done:
             raise RuntimeError("Episode has finished. Call reset().")
         action_edge_idx, color = self.decode_action(action)
         self.steps += 1
 
-        if rewards.is_invalid_action(self, action_edge_idx):
-            print('played invalid action', action_edge_idx, color)
-            reward, done, info = rewards.invalid_action_reward(invalid_action_penalty=-1000)
-            return self.colored_edges, reward, done, info
+        if self.number_of_players == 2:
+            if rewards.is_invalid_action(self, action_edge_idx):
+                reward, done, info = rewards.invalid_action_reward(invalid_action_penalty=-1000)
+                return self.colored_edges, reward, done, info
 
+        # TODO: make reward type a parameter 
         reward_type = "hoffman"
         if reward_type == "simple":            
             #color the edge
             self.colored_edges[action_edge_idx] = int(color)
             reward, done, info = rewards.simple_reward(self, color, terminal_reward_loss=-1.0, terminal_reward_success=1.0)  #TODO: make params
-        
+        #print(color)
         if reward_type == "hoffman":
             self.colored_edges[action_edge_idx] = int(color)
-            reward, done, info = rewards.hoffman_simple_reward(self, color, 8)
+            reward, done, info = rewards.hoffman_simple_reward(self, color, 8)  #TODO: make d-regular degree a parameter
         return self.colored_edges, reward, done, info
 
 
 if __name__ == '__main__':
     # Small example: attempt to color edges of K_5 to avoid red K3 and blue K3 (classic Ramsey R(3,3)=6)
-    env = RamseyEnv(n_vertices=5, n_red_edges=3, n_blue_edges=3)
+    env = RamseyEnv(n_vertices=5, n_red_edges=3, n_blue_edges=3, number_of_players=2)
     state = env.reset()
 
     # naive random rollouts

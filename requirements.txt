@@ -2,3 +2,5 @@ pytorch
 networkx
 matplotlib
 pylint
+absl-py
+skrl

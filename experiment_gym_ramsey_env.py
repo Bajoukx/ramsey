@@ -1,36 +1,28 @@
-import itertools
+"""Work in progress script to experiment with skrl library on Ramsey env."""
+
+from absl import app
+from absl import flags
+
 import torch
-from typing import Optional, Tuple, List, Union, Dict
-import numpy as np
-import networkx
-from torch import Tensor
-from torch_geometric.data import Data
 import torch.nn as nn
-import matplotlib.pyplot as plt
-import collections
-import stable_baselines3
-from stable_baselines3.common.env_checker import check_env
-from stable_baselines3.common.evaluation import evaluate_policy
-import gymnasium
 from skrl.envs.wrappers.torch import wrap_env
 from skrl.agents.torch.cem import CEM, CEM_DEFAULT_CONFIG
 from skrl.memories.torch import RandomMemory
 from skrl.trainers.torch import SequentialTrainer
 from skrl.models.torch import Model, CategoricalMixin
 
-
 import gym_ramsey_game
 
-def test_stable_baselines():
-    env = gym_ramsey_game.RamseyGymEnv(n_vertices=17,
-                                       n_red_edges=4,
-                                       n_blue_edges=4)
-    model = stable_baselines3.A2C("MlpPolicy", env, verbose=1)
-    model.learn(total_timesteps=100000)
-    mean_reward, std_reward = evaluate_policy(model, model.get_env(), n_eval_episodes=10)
+FLAGS = flags.FLAGS
+flags.DEFINE_integer("n_vertices", 17, "Number of vertices in the complete graph K_n.")
+flags.DEFINE_integer("n_red_edges", 4, "Number of red edges.")
+flags.DEFINE_integer("n_blue_edges", 4, "Number of blue edges.")
+flags.DEFINE_integer("number_of_players", 2, "Number of players.")
+flags.DEFINE_string("render_mode", "animated", "Render mode: 'static', 'animated', or None.")
+flags.DEFINE_string("device", "cpu", "Device to use: 'cpu' or 'cuda'.")
 
-def test_skrl():
-    class Policy(CategoricalMixin, Model):
+
+class Policy(CategoricalMixin, Model):
         def __init__(self, observation_space, action_space, device="cpu", unnormalized_log_prob=True):
             Model.__init__(self, observation_space, action_space, device)
             CategoricalMixin.__init__(self, unnormalized_log_prob)
@@ -68,21 +60,21 @@ def test_skrl():
                             logits[i, edge + n_edges] = -1e9
             return logits, {}
 
+def main(argv):
+
     env = gym_ramsey_game.RamseyGymEnv(
-        n_vertices=17,
-        n_red_edges=4,
-        n_blue_edges=4,
-        render_mode="animated",
-        device="cpu"
+        n_vertices=FLAGS.n_vertices,
+        n_red_edges=FLAGS.n_red_edges,
+        n_blue_edges=FLAGS.n_blue_edges,
+        render_mode=FLAGS.render_mode,
+        number_of_players=FLAGS.number_of_players,
+        device=FLAGS.device
     )
     env = wrap_env(env, wrapper="gymnasium")
     device = env.device
 
     memory = RandomMemory(memory_size=1000, num_envs=env.num_envs, device=device, replacement=False)
 
-    """policy = Policy(env.observation_space,
-                    env.action_space, device=device,
-                    unnormalized_log_prob=True)"""
     models = {}
     models["policy"] = Policy(env.observation_space, env.action_space, device)
     for model in models.values():
@@ -117,4 +109,4 @@ def test_skrl():
     trainer.train()
 
 if __name__ == "__main__":
-    test_skrl()
+    app.run(main)

@@ -1,7 +1,7 @@
 import gymnasium
 import torch
 from torch import Tensor
-from typing import Optional, Tuple, Union, Dict, List
+from typing import Optional, Union
 
 import ramsey_game
 import utils
@@ -16,6 +16,7 @@ class RamseyGymEnv(gymnasium.Env):
         n_vertices: int,
         n_red_edges: int,
         n_blue_edges: int,
+        number_of_players: int = 2,
         render_mode: Optional[str] = None,
         device: Optional[Union[str, torch.device]] = None
     ):
@@ -24,17 +25,30 @@ class RamseyGymEnv(gymnasium.Env):
             n_vertices=n_vertices,
             n_red_edges=n_red_edges,
             n_blue_edges=n_blue_edges,
+            number_of_players=number_of_players,
             device=device
         )
         self.n_edges = self.env.n_edges
 
         self.action_space = gymnasium.spaces.Discrete(self.n_edges * 2)  # edge x color
-        self.observation_space = gymnasium.spaces.Box(
-            low=-1,
-            high=1,
-            shape=(self.n_edges,),
-            dtype=int,
-        )
+        self.number_of_players = number_of_players
+        if self.number_of_players == 2:
+            self.observation_space = gymnasium.spaces.Box(
+                low=-1,
+                high=1,
+                shape=(self.n_edges,),
+                dtype=int,
+            )
+        elif self.number_of_players == 1:
+            self.observation_space = gymnasium.spaces.Box(
+                low=0,
+                high=1,
+                shape=(self.n_edges,),
+                dtype=int,
+            )
+        else:
+            raise NotImplementedError("Only 1 or 2 players are supported.")
+
         self.episode_rewards = []
         assert render_mode is None or render_mode in self.metadata["render.modes"]
         self.render_mode = render_mode
