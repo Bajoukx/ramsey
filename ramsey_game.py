@@ -17,7 +17,7 @@ This file provides RamseyEnv:
   are red and the rest blue.
 """
 
-from typing import Optional, Tuple, List, Union, Dict
+from typing import Optional, Tuple, List, Union
 import itertools
 
 import torch
@@ -25,9 +25,11 @@ from torch import Tensor
 import networkx
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
+import gymnasium
 
 import clique_algorithms
 import rewards
+import utils
 
 
 class RamseyEnv():
@@ -38,8 +40,13 @@ class RamseyEnv():
         n_vertices: int,
         n_red_edges: int,
         n_blue_edges: int,
+        number_of_players: int = 2,
         device: Optional[Union[str, torch.device]] = None
     ) -> None:
+        """Initialize Ramsey Environment."""
+
+        assert number_of_players == 2
+        self.number_of_players = number_of_players
 
         assert n_vertices >= 1
         self.n_vertices = n_vertices
@@ -57,7 +64,11 @@ class RamseyEnv():
 
     def _init_edges(self) -> Tensor:
         """Returns a tensor of shape [n_edges] filled with -1 to indicate uncolored."""
-        return -1 * torch.ones(self.n_edges, dtype=torch.float, device=self.device)
+        if self.number_of_players == 2:
+            return -1 * torch.ones(self.n_edges, dtype=torch.float, device=self.device)
+        if self.number_of_players == 1:
+            return utils.get_initial_coloring(self.n_edges, self.device)
+
 
     def reset(self):
         """Resets environment.
@@ -91,6 +102,7 @@ class RamseyEnv():
         return sorted([self.encode_action(e, c) for e in uncolored for c in (0, 1)])
 
     def _edjes_to_adj_dict(self, color: int):
+        """Convert colored edges to adjacency dict for given color."""
         colored_edges_idx = (self.colored_edges == color).nonzero(as_tuple=True)[0]
         adj_dict = {}
         for idx in colored_edges_idx:
@@ -142,75 +154,6 @@ class RamseyEnv():
             self.colored_edges[action_edge_idx] = int(color)
             reward, done, info = rewards.hoffman_simple_reward(self, color, 8)
         return self.colored_edges, reward, done, info
-        
-
-    def _render(self) -> None:
-        """Render current graph coloring using networkx and matplotlib."""
-        G = networkx.Graph()
-        G.add_nodes_from(range(self.n_vertices))
-        colors = []
-        for idx, (u, v) in enumerate(self.all_edges):
-            c = self.colored_edges[idx].item()
-            if c == -1:
-                edge_color = "gray"
-            elif c == 0:
-                edge_color = "red"
-            else:
-                edge_color = "blue"
-            G.add_edge(u, v, color=edge_color)
-            colors.append(edge_color)
-
-
-        pos = networkx.spring_layout(G)
-        edge_colors = [G[u][v]['color'] for u, v in G.edges()]
-
-
-        networkx.draw(G, pos, with_labels=True, edge_color=edge_colors, node_color="lightgray", node_size=500)
-        plt.title(f"Ramsey R({self.n_red_vertices},{self.n_blue_vertices}) on K_{self.n_vertices}; step {self.steps}")
-        plt.show()
-    
-    def render(self) -> None:
-        """Render current graph coloring as a live matplotlib animation."""
-        if not hasattr(self, "_fig"):
-            # Initialize figure and graph layout on first call
-            self._fig, self._ax = plt.subplots(figsize=(6, 6))
-            self._G = networkx.Graph()
-            self._G.add_nodes_from(range(self.n_vertices))
-            self._pos = networkx.spring_layout(self._G)  # fixed layout for consistency
-            self._ani = None
-
-            # Draw empty base
-            networkx.draw_networkx_nodes(self._G, self._pos, node_color="lightgray", node_size=500, ax=self._ax)
-            self._edges = networkx.draw_networkx_edges(self._G, self._pos, edge_color="gray", ax=self._ax)
-            self._labels = networkx.draw_networkx_labels(self._G, self._pos, ax=self._ax)
-            self._ax.set_title(f"Ramsey R({self.n_red_vertices},{self.n_blue_vertices}) on K_{self.n_vertices}; step {self.steps}")
-            plt.ion()
-            plt.show(block=False)
-
-        # Update edges each time render() is called
-        self._G.clear_edges()
-        colors = []
-        for idx, (u, v) in enumerate(self.all_edges):
-            c = self.colored_edges[idx].item()
-            if c == -1:
-                edge_color = "gray"
-            elif c == 0:
-                edge_color = "red"
-            else:
-                edge_color = "blue"
-            self._G.add_edge(u, v, color=edge_color)
-            colors.append(edge_color)
-
-        # Redraw with updated colors
-        self._ax.clear()
-        networkx.draw(
-            self._G, self._pos, ax=self._ax,
-            with_labels=True, edge_color=colors,
-            node_color="lightgray", node_size=500
-        )
-        self._ax.set_title(f"Ramsey R({self.n_red_vertices},{self.n_blue_vertices}) on K_{self.n_vertices}; step {self.steps}")
-        self._fig.canvas.draw()
-        self._fig.canvas.flush_events()
 
 
 if __name__ == '__main__':
@@ -230,6 +173,4 @@ if __name__ == '__main__':
         total_reward += rwd
         if rwd != 0:
             print("Reward", rwd, info)
-        #env.render()
     print("Episode done, total reward", total_reward)
-    env._render()

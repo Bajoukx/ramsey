@@ -4,17 +4,19 @@ from torch import Tensor
 from typing import Optional, Tuple, Union, Dict, List
 
 import ramsey_game
+import utils
 
 class RamseyGymEnv(gymnasium.Env):
     """Gym wrapper for RamseyEnv using PyG Data states."""
 
-    metadata = {"render.modes": ["human"]}
+    metadata = {"render.modes": ["static", "animated"]}
 
     def __init__(
         self,
         n_vertices: int,
         n_red_edges: int,
         n_blue_edges: int,
+        render_mode: Optional[str] = None,
         device: Optional[Union[str, torch.device]] = None
     ):
         super().__init__()
@@ -34,6 +36,8 @@ class RamseyGymEnv(gymnasium.Env):
             dtype=int,
         )
         self.episode_rewards = []
+        assert render_mode is None or render_mode in self.metadata["render.modes"]
+        self.render_mode = render_mode
 
     def reset(self):
         info = {}
@@ -46,19 +50,22 @@ class RamseyGymEnv(gymnasium.Env):
         if isinstance(obs, torch.Tensor):
             obs = obs.detach().cpu().numpy()
         obs = obs.reshape(-1)
-        #obs = self._convert_obs(state)
         truncated = False  # No time limits
         self.episode_rewards.append(reward)
-        print(self.episode_rewards)
         return obs, reward, done, truncated, info
 
-    def render(self, mode="human"):
-        if mode == "human":
-            self.env.render()
+    def render(self):
+        if self.render_mode == "static":
+            utils.static_render(self.env.n_vertices, self.env.all_edges, self.env.colored_edges)
+        elif self.render_mode == "animated":
+            if not hasattr(self, "_fig_ax"):
+                self._fig_ax = None
+            self._fig_ax = utils.animated_render(self.env.n_vertices,
+                                                 self.env.n_red_vertices,
+                                                 self.env.n_blue_vertices,
+                                                 self.env.all_edges,
+                                                 self.env.colored_edges,
+                                                 self.env.steps,
+                                                 self._fig_ax)
         else:
-            raise NotImplementedError(f"Render mode {mode} not implemented.")
-
-    #def _convert_obs(self, state: torch.Tensor) -> np.ndarray:
-    #    """Convert torch state (with -1,0,1) to numpy (0,1,2)."""
-    #    arr = state.detach().cpu().numpy().astype(np.int32)
-    #    return arr
+            raise NotImplementedError(f"Render mode {self.render_mode} not implemented.")

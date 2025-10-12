@@ -72,6 +72,7 @@ def test_skrl():
         n_vertices=17,
         n_red_edges=4,
         n_blue_edges=4,
+        render_mode="animated",
         device="cpu"
     )
     env = wrap_env(env, wrapper="gymnasium")

@@ -85,7 +85,6 @@ class RandomGraphDataset(Dataset):
         return data
 
 
-
 if __name__ == "__main__":
     generator = NaiveDataGenerator(output_dir="random_graphs")
     generator.generate_dataset(num_graphs=100, num_nodes=10, p_min=0.1, p_max=0.5)
