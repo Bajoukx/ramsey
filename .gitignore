@@ -21,3 +21,7 @@ __pycache__/
 build/
 dist/
 *.egg-info/
+
+# Tensorboard specific files
+runs/
+*.tfevents.*
