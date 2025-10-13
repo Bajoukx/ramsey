@@ -7,13 +7,18 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import torch
 
-def get_initial_coloring(n_edges: int, device: Optional[Union[str, torch.device]] = None):
+def get_initial_random_coloring(n_edges: int, device: Optional[Union[str, torch.device]] = None):
     """Returns a tensor of shape [n_edges] filled with random 0 and 1 values."""
-    # TODO: Add a probability parameter to control the ratio of -1 and 1
-    device = device or ("cuda" if torch.cuda.is_available() else "cpu")
-    return torch.randint(0, 2, (n_edges,), dtype=torch.float, device=device)
+    max_edge_probability = 0.5  # TODO: Add probability as input
+    edges = torch.rand(n_edges, device=device)
+    edges = (edges < max_edge_probability).long()
+    return edges
 
-
+def get_initial_empty_coloring(n_edges: int, device: Optional[Union[str, torch.device]] = None):
+    """Returns a tensor of shape [n_edges] filled with 0 values."""
+    edges = torch.zeros(n_edges, dtype=torch.long, device=device)
+    return edges
+    
 def static_render(n_vertices: int, all_edges: list, colored_edges: torch.Tensor):
     """Renders a static image of the graph."""
     G = networkx.Graph()

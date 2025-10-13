@@ -130,7 +130,7 @@ class RamseyEnv():
           - fully coloring without forbidden cliques: terminal_reward_loss and done
           - otherwise: 0 reward and continue
         """
-        print("action", action)
+        #print("action", action)
         if self.done:
             raise RuntimeError("Episode has finished. Call reset().")
         action_edge_idx, color = self.decode_action(action)
