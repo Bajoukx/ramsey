@@ -36,12 +36,12 @@ def simple_reward(ramsey_env,
     # non-terminal
     return 0.0, False, {}
 
-def hoffman_simple_reward(ramsey_env, action_color: int, regular_degree: int):
+def hoffman_wip_reward(ramsey_env, action_color: int, regular_degree: int):
     """Computes Hoffman simple reward.
     
-    The Hoffman bound assumes that G is a d-regular graph, then
+    Assuming that G is a d-regular graph, then the Hoffman bound states that for the independence number \alpha(G):
     \alpha(G) <= n * (-lambda_min) / (d - lambda_min)
-    where lambda_min is the smallest eigenvalue of the adjacency matrix of G.
+    where lambda_min is the smallest eigenvalue of the adjacency matrix of G and \alpha is the independence number.
 
     The simple Hoffman reward function is defined as:
     f(G) = -avg_degree(G) + \beta * min(0, smallest_eigenvalue(G) - (n_vertives(G) * d / (n_vertices(G) - d)))
@@ -78,6 +78,25 @@ def hoffman_simple_reward(ramsey_env, action_color: int, regular_degree: int):
         return reward, done, {"violation_color": action_color}
 
     return reward, False, {}
+
+def hoffman_simple_reward(ramsey_env, action_color: int, regular_degree: int):
+    """Computes the Hoffman simle reward.
+    
+    The Hoffman bound states that for a d-regular graph, the independence number \alpha(G) is bounded by:
+    \alpha(G) <= n * (-lambda_min) / (d - lambda_min)
+    where lambda_min is the smallest eigenvalue of the adjacency matrix of G.
+    """
+    adjacency_matrix = ramsey_env._edges_to_adjacency_tensor(action_color)
+    eigenvalue_min = torch.linalg.eigvalsh(adjacency_matrix).min().item()
+    hoffman = ramsey_env.n_vertices * (-eigenvalue_min) / (regular_degree - eigenvalue_min)
+    reward = -hoffman
+
+    # check terminal conditions
+    found_max_clique = ramsey_env.has_max_clique(action_color, ramsey_env.n_red_vertices)
+    if found_max_clique:
+        done = True
+        return reward, done, {"violation_color": action_color}
+    return -hoffman, False, {}
 
 
     

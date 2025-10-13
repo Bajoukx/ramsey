@@ -109,6 +109,16 @@ class RamseyEnv():
             adj_dict.setdefault(v, set()).add(u)
         return adj_dict
     
+    def _edges_to_adjacency_tensor(self, color: int) -> Tensor:
+        """Convert colored edges to adjacency matrix for given color."""
+        adj = torch.zeros((self.n_vertices, self.n_vertices), dtype=torch.float, device=self.device)
+        colored_edges_idx = (self.colored_edges == color).nonzero(as_tuple=True)[0]
+        for idx in colored_edges_idx:
+            u, v = self.base_edge_index[:, idx]
+            adj[u, v] = 1.0
+            adj[v, u] = 1.0
+        return adj
+    
     def has_max_clique(self, color: int, size: int) -> bool:
         """Uses the Bron-Kerbosch algorithm to check if the maximal clique size is in the graph."""
         adjacency_dict = self._edjes_to_adj_dict(color=color)
@@ -116,8 +126,11 @@ class RamseyEnv():
         if cliques:
             len_cliques = [len(clique) for clique in cliques]
             if max(len_cliques) >= size:
-                #print('found clique:', cliques)
                 return True
+            if self.steps >= 135 and max(len_cliques) <= 3:
+                print("No 4-cliques found!")
+                print("found cliques:", cliques)
+                print("max clique size:", max(len_cliques))
         else:
             return False
 
