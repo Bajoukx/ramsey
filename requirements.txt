@@ -1,6 +1,7 @@
 pytorch
 networkx
 matplotlib
+skrl
 pylint
 absl-py
-skrl
+pytest
