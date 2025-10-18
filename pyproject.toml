@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools >= 77.0.3"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["ramsey"]
+
+[project]
+name = "ramsey"
+version = "0.0.1"
+authors = [
+  { name="Bajoukx"},
+]
+description = "Ramsey numbers exploration package."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+  "torch",
+  "networkx",
+  "matplotlib",
+  "skrl",
+  "pylint",
+  "absl-py",
+  "pytest",
+  "yapf"
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+license = "WTFPL"
+
+[project.urls]
+Homepage = "https://github.com/Bajoulx/ramsey"

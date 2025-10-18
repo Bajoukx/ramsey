@@ -1,7 +1,8 @@
-pytorch
+torch
 networkx
 matplotlib
 skrl
 pylint
 absl-py
 pytest
+yapf

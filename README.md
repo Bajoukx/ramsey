@@ -23,3 +23,10 @@ One of the goals of this project is also to create a large dataset in order to i
 
  - [x] Create a naive implementation of random graph generation and wwriting to disk.
  - [ ] Explore the dataset and identify relationships.
+
+ # Installation
+
+ Creating a virtual environment is recommended. Install in development mode
+ with:
+ 
+ `pip install -e .`
