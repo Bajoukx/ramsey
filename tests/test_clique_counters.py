@@ -22,16 +22,7 @@ class TestCliqueCounters:
         the number of cliques >= 3 in the graph. The example graph contains
         two cliques: {0, 1, 2, 3} and {4, 5, 6}.
         """
-        graph = {
-            0: {1, 2, 3},
-            1: {0, 2, 3},
-            2: {0, 1, 3},
-            3: {0, 1, 2, 4},
-            4: {3, 5, 6},
-            5: {4, 6},
-            6: {4, 5}
-        }
-        cliques = clique_algorithms.bron_kerbosch(graph)
+        cliques = clique_algorithms.bron_kerbosch(self._TEST_GRAPH)
         assert len(cliques) == 2
     
     def test_bron_kerbosch_clique_max_cliques(self):

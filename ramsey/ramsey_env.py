@@ -1,6 +1,5 @@
 """The ramsey environment."""
 
-from collections.abc import Callable
 from typing import Optional, Tuple, List, Union
 import itertools
 
@@ -10,6 +9,7 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
 from ramsey import env_utils
+from ramsey import rewards
 
 
 class RamseyEnv():
@@ -17,7 +17,10 @@ class RamseyEnv():
 
     def __init__(self,
                  n_vertices: int,
-                 clique_sizes: List,
+                 clique_sizes: List[int],
+                 init_method_name: str = "empty",
+                 reward_method_name: str = "simple",
+                 init_params=None,
                  device: Optional[Union[str, torch.device]] = None) -> None:
         """Initialize the Ramsey Environment."""
 
@@ -31,19 +34,30 @@ class RamseyEnv():
 
         self.all_edges = list(itertools.combinations(range(n_vertices), 2))
         self.n_edges = len(self.all_edges)
+        self.n_colors = len(self.clique_sizes)
 
-        self.reset()
+        self.init_params = init_params or {}
 
-    def reset(self, init_method: Callable) -> torch.Tensor:
+        if init_method_name not in env_utils.get_all_init_methods():
+            raise ValueError(f"Unknown init_method '{init_method_name}'")
+        self.init_method_name = init_method_name
+        self.init_function = env_utils.get_init_function(self.init_method_name)
+
+        if reward_method_name not in rewards.get_all_reward_methods():
+            raise ValueError(f"Unknown reward_method '{reward_method_name}'")
+        self.reward_method_name = reward_method_name
+        self.reward_function = rewards.get_reward_function(
+            self.reward_method_name)
+
+    def reset(self) -> torch.Tensor:
         """Resets environment."""
-        self.adjacency_matrix = init_method()
+        self.adjacency_matrix = self.init_function(self, **self.init_params)
         self.done = False
-        self.info = {}
+        info = {}
         self.steps = 0
-        return self.adjacency_matrix
+        return env_utils.flaten_adjacency_matrix(self.adjacency_matrix), info
 
-    def step(self, action: Union[int, Tuple[int, int]],
-             reward_function: Callable):
+    def step(self, action: int):
         """Apply action.
         
         An action is a color change in the graph i.e. the update of the
@@ -56,9 +70,18 @@ class RamseyEnv():
         """
         if self.done:
             raise RuntimeError("Episode has finished. Call reset().")
-        
-        self.adjacency_matrix = env_utils.apply_action(action)
-        reward, done, info = reward_function(self.adjacency_matrix)
-        return self.adjacency_matrix, reward, done, info
 
-    
+        action_color, action_idx = env_utils.decode_action(self, action)
+        self.adjacency_matrix[action_idx[0], action_idx[1]] = action_color
+        self.adjacency_matrix[action_idx[1], action_idx[0]] = action_color
+
+        print("action color:", action_color)
+        print("clique size", self.clique_sizes)
+        print("max clique size:", self.clique_sizes[action_color])
+        print("number of colors:", self.n_colors)
+        reward, done, info = self.reward_function(
+            self, action_color, self.clique_sizes[action_color],
+            **self.init_params)
+        flat_adj_matrix = env_utils.flaten_adjacency_matrix(
+            self.adjacency_matrix)
+        return flat_adj_matrix, reward, done, info
