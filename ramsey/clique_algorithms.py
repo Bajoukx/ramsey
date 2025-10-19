@@ -33,17 +33,3 @@ def bron_kerbosch(graph_dict):
 
     _recursive(set(), set(graph_dict.keys()), set(), graph_dict)
     return cliques
-
-
-def has_max_clique(env, color: int, size: int) -> bool:
-    """Uses the Bron-Kerbosch algorithm to check if the maximal clique size is in the graph."""
-    adjacency_dict = env._edjes_to_adj_dict(color=color)
-    cliques = clique_algorithms.bron_kerbosch(adjacency_dict)
-    if cliques:
-        len_cliques = [len(clique) for clique in cliques]
-        if max(len_cliques) >= size:
-            return True
-        if self.steps >= 135:  #TODO: remove
-            print("max clique size:", max(len_cliques))
-            print("graph:", self._edjes_to_adj_dict(color=color))
-            print("found cliques:", cliques)

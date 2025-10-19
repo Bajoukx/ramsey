@@ -55,7 +55,7 @@ class RamseyEnv():
         self.done = False
         info = {}
         self.steps = 0
-        return env_utils.flaten_adjacency_matrix(self.adjacency_matrix), info
+        return self.adjacency_matrix, info
 
     def step(self, action: int):
         """Apply action.
@@ -75,13 +75,7 @@ class RamseyEnv():
         self.adjacency_matrix[action_idx[0], action_idx[1]] = action_color
         self.adjacency_matrix[action_idx[1], action_idx[0]] = action_color
 
-        print("action color:", action_color)
-        print("clique size", self.clique_sizes)
-        print("max clique size:", self.clique_sizes[action_color])
-        print("number of colors:", self.n_colors)
         reward, done, info = self.reward_function(
             self, action_color, self.clique_sizes[action_color],
             **self.init_params)
-        flat_adj_matrix = env_utils.flaten_adjacency_matrix(
-            self.adjacency_matrix)
-        return flat_adj_matrix, reward, done, info
+        return self.adjacency_matrix, reward, done, info

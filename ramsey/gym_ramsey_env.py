@@ -7,6 +7,7 @@ import torch
 from torch import Tensor
 from typing import Optional, Union
 
+from ramsey import env_utils
 from ramsey import ramsey_env
 
 
@@ -24,6 +25,7 @@ class RamseyGymEnv(gymnasium.Env):
                  render_mode: Optional[str] = None,
                  device: Optional[Union[str, torch.device]] = None):
         super().__init__()
+        """Initializes the Ramsey Gym environment."""
         self.env = ramsey_env.RamseyEnv(n_vertices=n_vertices,
                                         clique_sizes=clique_sizes,
                                         init_method_name=init_method_name,
@@ -45,17 +47,30 @@ class RamseyGymEnv(gymnasium.Env):
             "render.modes"]
 
     def reset(self):
+        """Reset the environment.
+
+        Resets the tracked episode rewards. Flattens the adjacency matrix for
+        compatibility and performance.
+        """
         observation, info = self.env.reset()
+        flat_observation = env_utils.flaten_adjacency_matrix(observation)
         self.episode_rewards = []
-        return observation, info
+        return flat_observation, info
 
     def step(self, action: int):
+        """Take a step in the environment.
+        
+        Keeps track of episode rewards. Flattens the adjacency matrix for
+        compatibility and performance.
+        """
         observation, reward, done, info = self.env.step(action)
         self.episode_rewards.append(reward)
         truncated = False  # No time limits
-        return observation, reward, truncated, done, info
+        flat_observation = env_utils.flaten_adjacency_matrix(observation)
+        return flat_observation, reward, truncated, done, info
 
     def render(self, mode: str = "None"):
+        """Renders the environment."""
         if mode == "None":
             return
         else:
