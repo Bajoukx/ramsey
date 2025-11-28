@@ -11,13 +11,16 @@ def flaten_adjacency_matrix(adjacency_matrix: torch.Tensor) -> torch.Tensor:
     
     The first row is the first n-1 elements of the flattened adjacency matrix,
     the second row is the following n-2 elements, and so on.
+    Args:
+        adjacency_matrix: A (n, n) adjacency matrix.
+    Returns:
+        A numpy array of size n*(n-1)/2 with dtype int64.
     """
     n = adjacency_matrix.size(0)
     flatened = adjacency_matrix[torch.triu(torch.ones(n, n), diagonal=1) == 1]
-    return flatened
+    return flatened.long()
 
-
-def unflaten_to_adjacency_matrix(
+def unflaten_vec_to_adjacency_matrix(
         flatened_adjacency: torch.Tensor) -> torch.Tensor:
     """Unflatens a tensor size n*(n-1)/2 into a (n, n) adjacency matrix.
 
@@ -55,7 +58,36 @@ def adj_matrix_to_dict(adjacency_matrix: torch.Tensor, color: int):
     return adj_dict
 
 
-def decode_action(env, action: int):
+def adj_vec_to_dict(adjacency_vec: torch.Tensor, 
+                    n_vertices: int,
+                    color: int) -> Dict[str, set]:
+    """Convert colored edges to adjacency dict for given color. 
+    
+    Args:
+        adjacency_vec: Flattened upper triangular adjacency vector.
+        n_vertices: Number of vertices in the graph.
+        color: Color value to filter edges by.
+    
+    Returns:
+        Dictionary mapping vertex strings to sets of adjacent vertices.
+    """
+    colored_edges_idx = (adjacency_vec == color).nonzero(as_tuple=True)[0]
+    
+    all_edges = list(itertools.combinations(range(n_vertices), 2))
+    
+    adj_dict = {}
+    for idx in colored_edges_idx:
+        u, v = all_edges[idx]
+        u_str, v_str = str(u), str(v)
+        
+        adj_dict.setdefault(u_str, set()).add(v_str)
+        adj_dict.setdefault(v_str, set()).add(u_str)
+    
+    return adj_dict
+
+
+
+def decode_action(env, action):
     """Decodes an action into edge indices and color.
     
     An action is an integer in the set {0, 2, ..., n_edges * colors}. The first
@@ -64,18 +96,13 @@ def decode_action(env, action: int):
     """
     color = action // env.n_edges
     vec_color_idx = action % env.n_edges
-    #color = action // (env.n_colors * env.n_edges)
-    #vec_color_idx = action % env.n_vertices
-
-    matrix_idxs = torch.triu_indices(env.n_vertices, env.n_vertices, offset=1)
-    matrix_color_idx = matrix_idxs[:, vec_color_idx]
-    return color, matrix_color_idx
+    return color, vec_color_idx
 
 
 def init_empty(env) -> torch.Tensor:
-    """Returns a tensor of shape [n_edges, n_edges] filled with 0 values."""
-    n_vertices = env.n_vertices
-    return torch.zeros(n_vertices, n_vertices)
+    """Returns a vector of shape [n_edges] filled with 0's."""
+    n_edges = env.n_edges
+    return torch.zeros(n_edges)
 
 
 def get_all_init_methods() -> Dict:

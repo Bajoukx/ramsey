@@ -8,6 +8,18 @@ def bron_kerbosch(graph_dict):
     
     Returns the list of all maximal cliques.
     https://rosettacode.org/wiki/Bron%E2%80%93Kerbosch_algorithm
+
+    Takes an adjacency dictionary as input, with the following example format:
+    {
+        '0': {'1', '2'},
+        '1': {'0', '2'},
+        '2': {'0', '1', '3'},
+        '3': {'2'}
+    }
+    Args:
+        graph_dict: Adjacency dictionary of the graph.
+    Returns:
+        A list of all maximal cliques found in the graph.
     """
     cliques = []
 

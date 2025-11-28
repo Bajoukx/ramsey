@@ -1,6 +1,7 @@
 """Test for clique counting algorithms"""
 
-import clique_algorithms
+from ramsey import clique_algorithms
+
 
 class TestCliqueCounters:
     """Test clique counting algorithms."""
@@ -24,7 +25,7 @@ class TestCliqueCounters:
         """
         cliques = clique_algorithms.bron_kerbosch(self._TEST_GRAPH)
         assert len(cliques) == 2
-    
+
     def test_bron_kerbosch_clique_max_cliques(self):
         """Test Bron-Kerbosch algorithm.
 

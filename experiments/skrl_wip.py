@@ -48,7 +48,7 @@ class Policy(CategoricalMixin, Model):
                 logits = self.net(x)
             return logits, {}
         
-def main(argv):
+def main(_):
     clique_sizes = [FLAGS.n_red_edges, FLAGS.n_blue_edges]
     env = gym_ramsey_env.RamseyGymEnv(
         n_vertices=FLAGS.n_vertices,

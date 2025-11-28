@@ -1,5 +1,6 @@
 """Reward functions for Ramsey environment."""
 
+import abc
 from typing import Callable, Dict
 
 import torch
@@ -15,11 +16,17 @@ def simple_reward(env,
                   terminal_reward_success: float = 1.0):
     """Computes simple reward.
 
+    This reward computes the reward for a single color. It penalizes each step
+    with a negative reward until a monochromatic clique of size max_clique_size
+    is found.
+
+    Colors are represented as integers starting from 0.
+
     Rewarding scheme:
         - creating monochromatic clique: terminal_reward_success and done
         - otherwise: -1 reward and continue
     """
-    graph_dict = env_utils.adj_matrix_to_dict(env.adjacency_matrix, color)
+    graph_dict = env_utils.adj_vec_to_dict(env.adjacency_vec, env.n_vertices, color)
     clique_list = clique_algorithms.bron_kerbosch(graph_dict)
 
     has_max_clique = False
@@ -47,7 +54,39 @@ def get_reward_function(method: str) -> Callable:
     init_methods = get_all_reward_methods()
     return init_methods[method]
 
+
+class RewardStrategy(abc.ABC):
+    """Abstract base class for reward strategies."""
+
+    @abc.abstractmethod
+    def compute_reward(self, obs, action):
+        """Computes the reward given an observation and action."""
+        pass
+
+class SimpleRewardStrategy(RewardStrategy):
+    """Simple reward strategy implementation."""
+    def __init__(self,
+                 max_clique_size, reward_loss=-1.0,
+                 terminal_reward_success=1.0):
+        """Initializes the simple reward strategy.
+        
+        This reward computes the reward for a single color. It penalizes each
+        step with a negative reward until a monochromatic clique of size
+        max_clique_size is found.
+
+        Rewarding scheme:
+            - creating monochromatic clique: terminal_reward_success and done
+            - otherwise: -1 reward and continue
+        """
+        self.max_clique_size = max_clique_size
+        self.reward_loss = reward_loss
+        self.terminal_reward_success = terminal_reward_success
+    
+    def compute_reward(self, obs, action):
+        pass
+
 ################# WIP ####################
+
 
 def hoffman_wip_reward(ramsey_env, action_color: int, regular_degree: int):
     """Computes Hoffman simple reward.
@@ -62,35 +101,41 @@ def hoffman_wip_reward(ramsey_env, action_color: int, regular_degree: int):
     In practice, we first create the adjacency matrix for the action_color, then we use torch to compute
     the smallest eigenvalue.
     """
-    adj = torch.zeros((ramsey_env.n_vertices, ramsey_env.n_vertices), dtype=torch.float)
-    edge_indices = (ramsey_env.colored_edges == action_color).nonzero(as_tuple=True)[0]
+    adj = torch.zeros((ramsey_env.n_vertices, ramsey_env.n_vertices),
+                      dtype=torch.float)
+    edge_indices = (ramsey_env.colored_edges == action_color).nonzero(
+        as_tuple=True)[0]
     for idx in edge_indices:
         u, v = ramsey_env.all_edges[idx]
         adj[u, v] = 1.0
         adj[v, u] = 1.0
 
     degrees = adj.sum(dim=1)
-    
+
     avg_degree = degrees.mean().item()
     """if degrees.min().item() < regular_degree:
         # not a d-regular graph
         return -avg_degree, False, {"not_regular": True}"""
-    
+
     # compute smallest eigenvalue
     eigenvalues = torch.linalg.eigvalsh(adj)
     smallest_eigenvalue = eigenvalues[0].real.item()
-    
+
     beta = 1.0  # scaling factor for the eigenvalue term
-    reward = -avg_degree + beta * min(0, smallest_eigenvalue - (ramsey_env.n_vertices * regular_degree / (ramsey_env.n_vertices - regular_degree)))
+    reward = -avg_degree + beta * min(
+        0, smallest_eigenvalue - (ramsey_env.n_vertices * regular_degree /
+                                  (ramsey_env.n_vertices - regular_degree)))
     #print('reward:', reward, 'avg_degree:', avg_degree, 'smallest_eigenvalue:', smallest_eigenvalue)
-    
+
     # check terminal conditions
-    found_max_clique = ramsey_env.has_max_clique(action_color, ramsey_env.n_red_vertices)
+    found_max_clique = ramsey_env.has_max_clique(action_color,
+                                                 ramsey_env.n_red_vertices)
     if found_max_clique:
         done = True
         return reward, done, {"violation_color": action_color}
 
     return reward, False, {}
+
 
 def hoffman_simple_reward(ramsey_env, action_color: int, regular_degree: int):
     """Computes the Hoffman simle reward.
@@ -103,14 +148,17 @@ def hoffman_simple_reward(ramsey_env, action_color: int, regular_degree: int):
     eigenvalue_min = torch.linalg.eigvalsh(adjacency_matrix).min().item()
     # TODO: fix "The algorithm failed to converge because the input matrix is ill-conditioned or has too many repeated eigenvalues (error code: 1).""
     mean_degree = adjacency_matrix.sum().item() / ramsey_env.n_vertices
-    reward = ramsey_env.n_vertices * (-eigenvalue_min) / (mean_degree - eigenvalue_min)
+    reward = ramsey_env.n_vertices * (-eigenvalue_min) / (mean_degree -
+                                                          eigenvalue_min)
 
     # check terminal conditions
-    found_max_clique = ramsey_env.has_max_clique(action_color, ramsey_env.n_red_vertices)
+    found_max_clique = ramsey_env.has_max_clique(action_color,
+                                                 ramsey_env.n_red_vertices)
     if found_max_clique:
         done = True
         return reward, done, {"violation_color": action_color}
     return reward, False, {}
+
 
 def max_eigenvalue_reward(ramsey_env, action_color: int):
     """Computes the maximum eigenvalue reward.
@@ -124,7 +172,8 @@ def max_eigenvalue_reward(ramsey_env, action_color: int):
     reward = max_eigenvalue
 
     # check terminal conditions
-    found_max_clique = ramsey_env.has_max_clique(action_color, ramsey_env.n_red_vertices)
+    found_max_clique = ramsey_env.has_max_clique(action_color,
+                                                 ramsey_env.n_red_vertices)
     if found_max_clique:
         done = True
         return reward, done, {"violation_color": action_color}

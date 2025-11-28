@@ -23,7 +23,6 @@ class RamseyEnv():
                  init_params=None,
                  device: Optional[Union[str, torch.device]] = None) -> None:
         """Initialize the Ramsey Environment."""
-
         if n_vertices < 1:
             raise ValueError("Invalid number of vertices.")
 
@@ -51,17 +50,17 @@ class RamseyEnv():
 
     def reset(self) -> torch.Tensor:
         """Resets environment."""
-        self.adjacency_matrix = self.init_function(self, **self.init_params)
+        self.adjacency_vec = self.init_function(self, **self.init_params)
         self.done = False
         info = {}
         self.steps = 0
-        return self.adjacency_matrix, info
+        return self.adjacency_vec, info
 
     def step(self, action: int):
         """Apply action.
         
         An action is a color change in the graph i.e. the update of the
-        adjacency matrix that represents the graph.
+        adjacency vector that represents the graph.
 
         Args:
             action: Integer representing the color change to make.
@@ -72,10 +71,9 @@ class RamseyEnv():
             raise RuntimeError("Episode has finished. Call reset().")
 
         action_color, action_idx = env_utils.decode_action(self, action)
-        self.adjacency_matrix[action_idx[0], action_idx[1]] = action_color
-        self.adjacency_matrix[action_idx[1], action_idx[0]] = action_color
+        self.adjacency_vec[action_idx] = action_color
 
         reward, done, info = self.reward_function(
             self, action_color, self.clique_sizes[action_color],
             **self.init_params)
-        return self.adjacency_matrix, reward, done, info
+        return self.adjacency_vec, reward, done, info

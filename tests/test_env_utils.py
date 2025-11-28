@@ -18,7 +18,7 @@ class TestUtils():
     def test_unflatten(self):
         """Test the unflatening of the flattened adjacency matrix."""
         flatened_matrix = torch.tensor([1., 0., 1., 1., 0., 1.])
-        unflatened_matrix = env_utils.unflaten_to_adjacency_matrix(
+        unflatened_matrix = env_utils.unflaten_vec_to_adjacency_matrix(
             flatened_matrix)
         expected_unflatened_matrix = torch.tensor([[0., 1., 0., 1.],
                                                    [1., 0., 1., 0.],
@@ -28,14 +28,16 @@ class TestUtils():
 
     def test_decode_action(self):
         """Test action decoding."""
+
         class DummyEnv:
             n_colors = 3
             n_edges = 3
             n_vertices = 3
+
         env = DummyEnv()
         action = 7
         color, edge_idx = env_utils.decode_action(env, action)
-        expected_edge_idx = torch.tensor([0, 2])
+        expected_edge_idx = 1
         expected_color = 2
-        assert torch.equal(edge_idx, expected_edge_idx)
+        assert edge_idx == expected_edge_idx
         assert color == expected_color
