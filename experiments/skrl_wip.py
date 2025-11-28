@@ -12,6 +12,7 @@ from skrl.trainers.torch import SequentialTrainer
 from skrl.models.torch import Model, CategoricalMixin
 
 from ramsey import gym_ramsey_env
+from ramsey import rewards
 
 FLAGS = flags.FLAGS
 flags.DEFINE_integer("n_vertices", 17, "Number of vertices in the complete graph K_n.")
@@ -50,11 +51,13 @@ class Policy(CategoricalMixin, Model):
         
 def main(_):
     clique_sizes = [FLAGS.n_red_edges, FLAGS.n_blue_edges]
+    reward_strategy = rewards.SimpleRewardStrategy(max_clique_size=max(clique_sizes))
     env = gym_ramsey_env.RamseyGymEnv(
         n_vertices=FLAGS.n_vertices,
         clique_sizes=clique_sizes,
         init_method_name="empty",
         init_params=None,
+        reward_strategy=reward_strategy,
         render_mode=FLAGS.render_mode,
         device=FLAGS.device
     )

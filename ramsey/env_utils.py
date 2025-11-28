@@ -58,9 +58,7 @@ def adj_matrix_to_dict(adjacency_matrix: torch.Tensor, color: int):
     return adj_dict
 
 
-def adj_vec_to_dict(adjacency_vec: torch.Tensor, 
-                    n_vertices: int,
-                    color: int) -> Dict[str, set]:
+def adj_vec_to_dict(adjacency_vec: torch.Tensor, color: int) -> Dict[str, set]:
     """Convert colored edges to adjacency dict for given color. 
     
     Args:
@@ -71,6 +69,7 @@ def adj_vec_to_dict(adjacency_vec: torch.Tensor,
     Returns:
         Dictionary mapping vertex strings to sets of adjacent vertices.
     """
+    n_vertices = int((1 + (1 + 8 * len(adjacency_vec))**0.5) / 2)
     colored_edges_idx = (adjacency_vec == color).nonzero(as_tuple=True)[0]
     
     all_edges = list(itertools.combinations(range(n_vertices), 2))

@@ -19,7 +19,7 @@ class RamseyEnv():
                  n_vertices: int,
                  clique_sizes: List[int],
                  init_method_name: str = "empty",
-                 reward_method_name: str = "simple",
+                 reward_strategy: rewards.RewardStrategy = None,
                  init_params=None,
                  device: Optional[Union[str, torch.device]] = None) -> None:
         """Initialize the Ramsey Environment."""
@@ -42,11 +42,7 @@ class RamseyEnv():
         self.init_method_name = init_method_name
         self.init_function = env_utils.get_init_function(self.init_method_name)
 
-        if reward_method_name not in rewards.get_all_reward_methods():
-            raise ValueError(f"Unknown reward_method '{reward_method_name}'")
-        self.reward_method_name = reward_method_name
-        self.reward_function = rewards.get_reward_function(
-            self.reward_method_name)
+        self.reward_strategy = reward_strategy
 
     def reset(self) -> torch.Tensor:
         """Resets environment."""
@@ -73,7 +69,6 @@ class RamseyEnv():
         action_color, action_idx = env_utils.decode_action(self, action)
         self.adjacency_vec[action_idx] = action_color
 
-        reward, done, info = self.reward_function(
-            self, action_color, self.clique_sizes[action_color],
-            **self.init_params)
+        reward, done, info = self.reward_strategy.compute_reward(
+            self.adjacency_vec, action_color)
         return self.adjacency_vec, reward, done, info

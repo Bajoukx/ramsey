@@ -59,7 +59,7 @@ class RewardStrategy(abc.ABC):
     """Abstract base class for reward strategies."""
 
     @abc.abstractmethod
-    def compute_reward(self, obs, action):
+    def compute_reward(self, obs, color):
         """Computes the reward given an observation and action."""
         pass
 
@@ -80,10 +80,30 @@ class SimpleRewardStrategy(RewardStrategy):
         """
         self.max_clique_size = max_clique_size
         self.reward_loss = reward_loss
-        self.terminal_reward_success = terminal_reward_success
+        self.terminal_reward_success = terminal_reward_success 
     
-    def compute_reward(self, obs, action):
-        pass
+    def compute_reward(self, obs, color):
+        """Computes the simple reward.
+        
+        Takes the environment observation as the flattened adjacency vector.
+        """
+        graph_dict = env_utils.adj_vec_to_dict(obs, color)
+        clique_list = clique_algorithms.bron_kerbosch(graph_dict)
+
+        has_max_clique = False
+        if clique_list:
+            len_cliques = [len(clique) for clique in clique_list]
+            if max(len_cliques) >= self.max_clique_size:
+                has_max_clique = True
+
+        if has_max_clique:
+            done = True
+            reward = self.terminal_reward_success
+            return reward, done, {"violation_color": color}
+
+        done = False
+        return self.reward_loss, done, {}
+
 
 ################# WIP ####################
 

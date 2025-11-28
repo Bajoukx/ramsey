@@ -8,6 +8,7 @@ from typing import Optional, Union
 
 from ramsey import env_utils
 from ramsey import ramsey_env
+from ramsey import rewards
 
 
 class RamseyGymEnv(ramsey_env.RamseyEnv, gymnasium.Env):
@@ -19,7 +20,7 @@ class RamseyGymEnv(ramsey_env.RamseyEnv, gymnasium.Env):
                  n_vertices: int,
                  clique_sizes: List[int],
                  init_method_name: str = "empty",
-                 reward_method_name: str = "simple",
+                 reward_strategy: rewards.RewardStrategy = None,
                  init_params=None,
                  render_mode: Optional[str] = None,
                  device: Optional[Union[str, torch.device]] = None,
@@ -27,7 +28,7 @@ class RamseyGymEnv(ramsey_env.RamseyEnv, gymnasium.Env):
         super().__init__(n_vertices=n_vertices,
                          clique_sizes=clique_sizes,
                          init_method_name=init_method_name,
-                         reward_method_name=reward_method_name,
+                         reward_strategy=reward_strategy,
                          init_params=init_params,
                          device=device)
         """Initializes the Ramsey Gym environment."""
@@ -35,7 +36,7 @@ class RamseyGymEnv(ramsey_env.RamseyEnv, gymnasium.Env):
                                         clique_sizes=clique_sizes,
                                         init_method_name=init_method_name,
                                         init_params=init_params,
-                                        reward_method_name=reward_method_name,
+                                        reward_strategy=reward_strategy,
                                         device=device)
         
         self.action_space = gymnasium.spaces.Discrete(self.env.n_edges * self.env.n_colors)
