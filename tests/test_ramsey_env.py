@@ -31,9 +31,12 @@ class TestRamseyEnv:
     def test_step_action(self):
         """Test ajacency matrix updtade through step action."""
         action = 3
+        reward_strategy = ramsey_env.rewards.SimpleRewardStrategy(
+            max_clique_size=3)
         env = ramsey_env.RamseyEnv(n_vertices=3,
                                    clique_sizes=[3, 3],
-                                   init_method_name="empty")
+                                   init_method_name="empty",
+                                   reward_strategy=reward_strategy)
         env.reset()
         adj_matrix, _, _, _ = env.step(action)
         expected_adjacency_matrix = torch.Tensor([1, 0, 0])
@@ -41,10 +44,13 @@ class TestRamseyEnv:
 
     def test_simple_reward(self):
         """Test Ramsey enviroment with simple reward."""
+        reward_strategy = ramsey_env.rewards.SimpleRewardStrategy(
+            max_clique_size=3,
+            terminal_reward_success=1.0)
         env = ramsey_env.RamseyEnv(n_vertices=3,
                                    clique_sizes=[3, 3],
                                    init_method_name="empty",
-                                   reward_method_name="simple")
+                                   reward_strategy=reward_strategy)
         env.reset()
         actions = [3, 4]
         for action in actions:
