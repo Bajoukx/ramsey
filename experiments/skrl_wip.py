@@ -62,12 +62,11 @@ def main(_):
         device=FLAGS.device
     )
     env = wrap_env(env, wrapper="gymnasium")
-    device = env.device
 
-    memory = RandomMemory(memory_size=100000, num_envs=1, device=device, replacement=False)
+    memory = RandomMemory(memory_size=100000, num_envs=1, device=FLAGS.device, replacement=False)
 
     models = {}
-    models["policy"] = Policy(env.observation_space, env.action_space, device)
+    models["policy"] = Policy(env.observation_space, env.action_space, FLAGS.device)
     for model in models.values():
         model.init_parameters(method_name="normal_", mean=0.0, std=0.1)
 
@@ -93,7 +92,7 @@ def main(_):
         cfg=cfg,
         observation_space=env.observation_space,
         action_space=env.action_space,
-        device=device
+        device=FLAGS.device
         )
     agent.track_data("episode_rewards", env.episode_rewards)
 

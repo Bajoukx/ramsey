@@ -28,8 +28,7 @@ class RamseyEnv():
 
         self.n_vertices = n_vertices
         self.clique_sizes = clique_sizes
-        self.device = torch.device(
-            device or ("cuda" if torch.cuda.is_available() else "cpu"))
+        self.device = torch.device(device)
 
         self.all_edges = list(itertools.combinations(range(n_vertices), 2))
         self.n_edges = len(self.all_edges)
@@ -50,7 +49,7 @@ class RamseyEnv():
         self.done = False
         info = {}
         self.steps = 0
-        return self.adjacency_vec, info
+        return self.adjacency_vec.to(self.device), info
 
     def step(self, action: int):
         """Apply action.
@@ -71,4 +70,4 @@ class RamseyEnv():
 
         reward, done, info = self.reward_strategy.compute_reward(
             self.adjacency_vec, action_color)
-        return self.adjacency_vec, reward, done, info
+        return self.adjacency_vec.to(self.device), reward, done, info
