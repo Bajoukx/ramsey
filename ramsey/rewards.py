@@ -1,7 +1,7 @@
 """Reward functions for Ramsey environment."""
 
 import abc
-from typing import Callable, Dict
+from typing import Callable, Dict, Optional, Union
 
 import torch
 
@@ -58,10 +58,13 @@ def get_reward_function(method: str) -> Callable:
 class RewardStrategy(abc.ABC):
     """Abstract base class for reward strategies."""
 
-    def __init__(self, cumulative: bool = False):
+    def __init__(self,
+                 cumulative: bool = False,
+                 reward_colors: Optional[Union[list, int]] = None):
         """Initializes the reward strategy."""
         self.cumulative = cumulative
         self.total_reward = 0.0
+        self.reward_colors = reward_colors
 
     def reset_total_reward(self):
         """Resets the total reward."""
@@ -72,9 +75,9 @@ class RewardStrategy(abc.ABC):
         """Computes the reward given an observation and action."""
         pass
 
-    def compute_reward(self, obs, color):
+    def compute_reward(self, obs):
         """Computes the reward, updating total reward if cumulative."""
-        reward, done, info = self._compute_step_reward(obs, color)
+        reward, done, info = self._compute_step_reward(obs)
         if self.cumulative:
             self.total_reward += reward
         return reward, done, info
@@ -86,43 +89,45 @@ class SimpleRewardStrategy(RewardStrategy):
                  max_clique_size,
                  reward_loss=-1.0,
                  terminal_reward_success=1.0,
-                 cumulative: bool = False):
+                 cumulative: bool = False,
+                 reward_colors: Optional[Union[list, int]] = None):
         """Initializes the simple reward strategy.
         
-        This reward computes the reward for a single color. It penalizes each
-        step with a negative reward until a monochromatic clique of size
-        max_clique_size is found.
+        This reward computes the reward for both colors. It penalizes each
+        step with a negative reward until a coloring is found without any
+        monochromatic clique of size max_clique_size.
 
         Rewarding scheme:
             - creating monochromatic clique: terminal_reward_success and done
             - otherwise: -1 reward and continue
         """
-        super().__init__(cumulative=cumulative)
+        super().__init__(cumulative=cumulative, reward_colors=reward_colors)
         self.max_clique_size = max_clique_size
         self.reward_loss = reward_loss
         self.terminal_reward_success = terminal_reward_success
     
-    def _compute_step_reward(self, obs, color):
+    def _compute_step_reward(self, obs):
         """Computes the simple reward.
         
         Takes the environment observation as the flattened adjacency vector.
         """
-        graph_dict = env_utils.adj_vec_to_dict(obs, color)
-        clique_list = clique_algorithms.bron_kerbosch(graph_dict)
+        for color in self.reward_colors:
+            graph_dict = env_utils.adj_vec_to_dict(obs, color)
+            clique_list = clique_algorithms.bron_kerbosch(graph_dict)
 
-        has_max_clique = False
-        if clique_list:
-            len_cliques = [len(clique) for clique in clique_list]
-            if max(len_cliques) >= self.max_clique_size:
-                has_max_clique = True
+            has_max_clique = False
+            if clique_list:
+                len_cliques = [len(clique) for clique in clique_list]
+                if max(len_cliques) >= self.max_clique_size:
+                    has_max_clique = True
 
-        if has_max_clique:
-            done = True
-            reward = self.terminal_reward_success
-            return reward, done, {"violation_color": color}
+            if has_max_clique:
+                done = False
+                reward = self.reward_loss
+                return reward, done, {"violation_color": color}
 
-        done = False
-        return self.reward_loss, done, {}
+        done = True
+        return self.terminal_reward_success, done, {}
 
 
 ################# WIP ####################

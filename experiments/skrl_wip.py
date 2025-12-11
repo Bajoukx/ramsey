@@ -57,7 +57,7 @@ class Policy(CategoricalMixin, Model):
 def main(_):
     clique_sizes = [FLAGS.n_red_edges, FLAGS.n_blue_edges]
     reward_strategy = rewards.SimpleRewardStrategy(
-        max_clique_size=max(clique_sizes), cumulative=True)
+        max_clique_size=max(clique_sizes), cumulative=False, reward_colors=[0, 1])
     env = gym_ramsey_env.RamseyGymEnv(n_vertices=FLAGS.n_vertices,
                                       clique_sizes=clique_sizes,
                                       init_method_name="empty",

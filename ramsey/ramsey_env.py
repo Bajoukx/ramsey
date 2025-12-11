@@ -69,5 +69,5 @@ class RamseyEnv():
         self.adjacency_vec[action_idx] = action_color
 
         reward, done, info = self.reward_strategy.compute_reward(
-            self.adjacency_vec, action_color)
+            self.adjacency_vec)
         return self.adjacency_vec.to(self.device), reward, done, info
