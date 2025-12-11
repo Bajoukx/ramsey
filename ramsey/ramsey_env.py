@@ -28,7 +28,7 @@ class RamseyEnv():
 
         self.n_vertices = n_vertices
         self.clique_sizes = clique_sizes
-        self.device = torch.device(device)
+        self.device = device if device is not None else torch.device("cpu")
 
         self.all_edges = list(itertools.combinations(range(n_vertices), 2))
         self.n_edges = len(self.all_edges)

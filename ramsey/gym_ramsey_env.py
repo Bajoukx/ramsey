@@ -58,7 +58,6 @@ class RamseyGymEnv(ramsey_env.RamseyEnv, gymnasium.Env):
         compatibility and performance.
         """
         observation, info = super().reset()
-        self.episode_rewards = []
         return observation, info
 
     def step(self, action: int):

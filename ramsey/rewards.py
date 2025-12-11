@@ -58,16 +58,35 @@ def get_reward_function(method: str) -> Callable:
 class RewardStrategy(abc.ABC):
     """Abstract base class for reward strategies."""
 
+    def __init__(self, cumulative: bool = False):
+        """Initializes the reward strategy."""
+        self.cumulative = cumulative
+        self.total_reward = 0.0
+
+    def reset_total_reward(self):
+        """Resets the total reward."""
+        self.total_reward = 0.0
+
     @abc.abstractmethod
-    def compute_reward(self, obs, color):
+    def _compute_step_reward(self, obs, color):
         """Computes the reward given an observation and action."""
         pass
+
+    def compute_reward(self, obs, color):
+        """Computes the reward, updating total reward if cumulative."""
+        reward, done, info = self._compute_step_reward(obs, color)
+        if self.cumulative:
+            self.total_reward += reward
+        return reward, done, info
+
 
 class SimpleRewardStrategy(RewardStrategy):
     """Simple reward strategy implementation."""
     def __init__(self,
-                 max_clique_size, reward_loss=-1.0,
-                 terminal_reward_success=1.0):
+                 max_clique_size,
+                 reward_loss=-1.0,
+                 terminal_reward_success=1.0,
+                 cumulative: bool = False):
         """Initializes the simple reward strategy.
         
         This reward computes the reward for a single color. It penalizes each
@@ -78,11 +97,12 @@ class SimpleRewardStrategy(RewardStrategy):
             - creating monochromatic clique: terminal_reward_success and done
             - otherwise: -1 reward and continue
         """
+        super().__init__(cumulative=cumulative)
         self.max_clique_size = max_clique_size
         self.reward_loss = reward_loss
-        self.terminal_reward_success = terminal_reward_success 
+        self.terminal_reward_success = terminal_reward_success
     
-    def compute_reward(self, obs, color):
+    def _compute_step_reward(self, obs, color):
         """Computes the simple reward.
         
         Takes the environment observation as the flattened adjacency vector.
