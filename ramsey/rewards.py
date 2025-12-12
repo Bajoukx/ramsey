@@ -26,7 +26,8 @@ def simple_reward(env,
         - creating monochromatic clique: terminal_reward_success and done
         - otherwise: -1 reward and continue
     """
-    graph_dict = env_utils.adj_vec_to_dict(env.adjacency_vec, env.n_vertices, color)
+    graph_dict = env_utils.adj_vec_to_dict(env.adjacency_vec, env.n_vertices,
+                                           color)
     clique_list = clique_algorithms.bron_kerbosch(graph_dict)
 
     has_max_clique = False
@@ -71,7 +72,7 @@ class RewardStrategy(abc.ABC):
         self.total_reward = 0.0
 
     @abc.abstractmethod
-    def _compute_step_reward(self, obs, color):
+    def _compute_step_reward(self, obs):
         """Computes the reward given an observation and action."""
         pass
 
@@ -80,11 +81,13 @@ class RewardStrategy(abc.ABC):
         reward, done, info = self._compute_step_reward(obs)
         if self.cumulative:
             self.total_reward += reward
+            return self.total_reward, done, info
         return reward, done, info
 
 
 class SimpleRewardStrategy(RewardStrategy):
     """Simple reward strategy implementation."""
+
     def __init__(self,
                  max_clique_size,
                  reward_loss=-1.0,
@@ -93,41 +96,46 @@ class SimpleRewardStrategy(RewardStrategy):
                  reward_colors: Optional[Union[list, int]] = None):
         """Initializes the simple reward strategy.
         
-        This reward computes the reward for both colors. It penalizes each
-        step with a negative reward until a coloring is found without any
+        This reward computes the reward for both colors. It penalizes each step
+        with a negative reward until a coloring is found without any
         monochromatic clique of size max_clique_size.
 
         Rewarding scheme:
-            - creating monochromatic clique: terminal_reward_success and done
-            - otherwise: -1 reward and continue
+            - creating monochromatic clique: reward_loss and continue
+            - no monochromatic clique in all reward_colors:
+              terminal_reward_success and done
         """
         super().__init__(cumulative=cumulative, reward_colors=reward_colors)
         self.max_clique_size = max_clique_size
         self.reward_loss = reward_loss
         self.terminal_reward_success = terminal_reward_success
-    
+
     def _compute_step_reward(self, obs):
         """Computes the simple reward.
         
         Takes the environment observation as the flattened adjacency vector.
         """
+        has_max_clique = False
+        done = False
         for color in self.reward_colors:
             graph_dict = env_utils.adj_vec_to_dict(obs, color)
             clique_list = clique_algorithms.bron_kerbosch(graph_dict)
 
-            has_max_clique = False
             if clique_list:
                 len_cliques = [len(clique) for clique in clique_list]
                 if max(len_cliques) >= self.max_clique_size:
                     has_max_clique = True
 
-            if has_max_clique:
-                done = False
+        if not torch.any(obs == -1).item():
+            done = True
+            if not has_max_clique:
+                reward = self.terminal_reward_success
+            else:
                 reward = self.reward_loss
-                return reward, done, {"violation_color": color}
-
-        done = True
-        return self.terminal_reward_success, done, {}
+            return reward, done, {}
+        
+        reward = self.reward_loss
+        return reward, done, {}
 
 
 ################# WIP ####################

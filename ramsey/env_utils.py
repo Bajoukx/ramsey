@@ -104,9 +104,15 @@ def init_empty(env) -> torch.Tensor:
     return torch.zeros(n_edges)
 
 
+def init_uncolored(env) -> torch.Tensor:
+    """Returns a vector of shape [n_edges] filled with -1's."""
+    n_edges = env.n_edges
+    return -1 * torch.ones(n_edges)
+
+
 def get_all_init_methods() -> Dict:
     """Get a dictionary with all pairs {init_method: function}."""
-    return {"empty": init_empty}
+    return {"empty": init_empty, "uncolored": init_uncolored}
 
 
 def get_init_function(method: str) -> Callable:
