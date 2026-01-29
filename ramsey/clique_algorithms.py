@@ -1,8 +1,5 @@
 """Algorithms to find cliques in graph."""
 
-from ramsey import env_utils
-
-
 def bron_kerbosch(graph_dict):
     """The Bron-Kerbosh Algorithm with pivot to find all maximal cliques.
     

@@ -20,6 +20,7 @@ def flaten_adjacency_matrix(adjacency_matrix: torch.Tensor) -> torch.Tensor:
     flatened = adjacency_matrix[torch.triu(torch.ones(n, n), diagonal=1) == 1]
     return flatened.long()
 
+
 def unflaten_vec_to_adjacency_matrix(
         flatened_adjacency: torch.Tensor) -> torch.Tensor:
     """Unflatens a tensor size n*(n-1)/2 into a (n, n) adjacency matrix.
@@ -71,31 +72,18 @@ def adj_vec_to_dict(adjacency_vec: torch.Tensor, color: int) -> Dict[str, set]:
     """
     n_vertices = int((1 + (1 + 8 * len(adjacency_vec))**0.5) / 2)
     colored_edges_idx = (adjacency_vec == color).nonzero(as_tuple=True)[0]
-    
+
     all_edges = list(itertools.combinations(range(n_vertices), 2))
-    
+
     adj_dict = {}
     for idx in colored_edges_idx:
         u, v = all_edges[idx]
         u_str, v_str = str(u), str(v)
-        
+
         adj_dict.setdefault(u_str, set()).add(v_str)
         adj_dict.setdefault(v_str, set()).add(u_str)
-    
+
     return adj_dict
-
-
-
-def decode_action(env, action):
-    """Decodes an action into edge indices and color.
-    
-    An action is an integer in the set {0, 2, ..., n_edges * colors}. The first
-    n_edges elements are assumed to be color 0, n_edges + 1 to 2 * n_edges
-    color 1, and so on.
-    """
-    color = action // env.n_edges
-    vec_color_idx = action % env.n_edges
-    return color, vec_color_idx
 
 
 def init_empty(env) -> torch.Tensor:

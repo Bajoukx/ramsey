@@ -26,8 +26,7 @@ def simple_reward(env,
         - creating monochromatic clique: terminal_reward_success and done
         - otherwise: -1 reward and continue
     """
-    graph_dict = env_utils.adj_vec_to_dict(env.adjacency_vec, env.n_vertices,
-                                           color)
+    graph_dict = env_utils.adj_vec_to_dict(env.adjacency_vec, color)
     clique_list = clique_algorithms.bron_kerbosch(graph_dict)
 
     has_max_clique = False
@@ -67,6 +66,11 @@ class RewardStrategy(abc.ABC):
         self.total_reward = 0.0
         self.reward_colors = reward_colors
 
+        self.info = {
+            "cliques_lists": {},
+            "max_clique_sizes": {}
+        }
+
     def reset_total_reward(self):
         """Resets the total reward."""
         self.total_reward = 0.0
@@ -84,6 +88,12 @@ class RewardStrategy(abc.ABC):
             return self.total_reward, done, info
         return reward, done, info
 
+    @abc.abstractmethod
+    def _check_counterexample(self) -> bool:
+        """Checks if the observation is a counterexample."""
+        raise NotImplementedError
+
+
 
 class SimpleRewardStrategy(RewardStrategy):
     """Simple reward strategy implementation."""
@@ -97,15 +107,21 @@ class SimpleRewardStrategy(RewardStrategy):
         """Initializes the simple reward strategy.
         
         This reward computes the reward for both colors. It penalizes each step
-        with a negative reward until a coloring is found without any
+        with a reward loss until a coloring is found without any
         monochromatic clique of size max_clique_size.
+
+        E.g. for a graph with 5 nodes and max_clique_size=3, if the 0-coloring
+        has a triangle (3-clique) but the 1-coloring does not, the reward is
+        reward_loss and the episode continues. If both colorings have no
+        triangle, the reward is terminal_reward_success and the episode ends.
 
         Rewarding scheme:
             - creating monochromatic clique: reward_loss and continue
             - no monochromatic clique in all reward_colors:
               terminal_reward_success and done
         """
-        super().__init__(cumulative=cumulative, reward_colors=reward_colors)
+        super().__init__(cumulative=cumulative,
+                         reward_colors=reward_colors)
         self.max_clique_size = max_clique_size
         self.reward_loss = reward_loss
         self.terminal_reward_success = terminal_reward_success
@@ -121,113 +137,101 @@ class SimpleRewardStrategy(RewardStrategy):
             graph_dict = env_utils.adj_vec_to_dict(obs, color)
             clique_list = clique_algorithms.bron_kerbosch(graph_dict)
 
+            self.info["cliques_lists"][f"color_{color}"] = clique_list
+
             if clique_list:
                 len_cliques = [len(clique) for clique in clique_list]
                 if max(len_cliques) >= self.max_clique_size:
                     has_max_clique = True
 
+        # Check if the graph is fully colored
         if not torch.any(obs == -1).item():
             done = True
             if not has_max_clique:
                 reward = self.terminal_reward_success
             else:
                 reward = self.reward_loss
-            return reward, done, {}
-        
+            return reward, done, self.info
+
         reward = self.reward_loss
-        return reward, done, {}
+        return reward, done, self.info
+
+    def _check_counterexample(self) -> bool:
+        """Checks if the observation is a counterxample."""
+        cliques_lists = self.info["cliques_lists"]
+        has_max_clique = []
+        if cliques_lists:
+            for clique_list in cliques_lists.values():
+                len_cliques = [len(clique) for clique in clique_list]
+                has_max_clique.append(max(len_cliques) if len_cliques else 0)
+        if all(size < self.max_clique_size for size in has_max_clique):
+            return True
+        return False
 
 
-################# WIP ####################
+class ColorSumRewardStrategy(RewardStrategy):
+    """Color sum reward strategy implementation."""
 
+    def __init__(self,
+                 max_clique_sizes,
+                 reward_loss=-0.0,
+                 reward_success=1.0,
+                 cumulative: bool = False,
+                 reward_colors: Optional[Union[list, int]] = None):
+        """Initializes the Reward for summing the reward for each color.
+        
+        This reward attributes a reward_success value for any colors that does
+        not contain a clique of the respective max_clique_size.
 
-def hoffman_wip_reward(ramsey_env, action_color: int, regular_degree: int):
-    """Computes Hoffman simple reward.
-    
-    Assuming that G is a d-regular graph, then the Hoffman bound states that for the independence number \alpha(G):
-    \alpha(G) <= n * (-lambda_min) / (d - lambda_min)
-    where lambda_min is the smallest eigenvalue of the adjacency matrix of G and \alpha is the independence number.
+        E.g. for a 8 vertix graph with max_clique_sizes of [3, 4], in case it
+        has a maximal clique of size 3 in color 0 but no maximal clique of size
+        4 in color 1, then it receives a reward of reward_loss + reward_success.
 
-    The simple Hoffman reward function is defined as:
-    f(G) = -avg_degree(G) + \beta * min(0, smallest_eigenvalue(G) - (n_vertives(G) * d / (n_vertices(G) - d)))
-    
-    In practice, we first create the adjacency matrix for the action_color, then we use torch to compute
-    the smallest eigenvalue.
-    """
-    adj = torch.zeros((ramsey_env.n_vertices, ramsey_env.n_vertices),
-                      dtype=torch.float)
-    edge_indices = (ramsey_env.colored_edges == action_color).nonzero(
-        as_tuple=True)[0]
-    for idx in edge_indices:
-        u, v = ramsey_env.all_edges[idx]
-        adj[u, v] = 1.0
-        adj[v, u] = 1.0
+        Assumes colors are represented as integers starting from 0, non-colored
+        as -1.
+        """
+        super().__init__(cumulative=cumulative,
+                         reward_colors=reward_colors)
+        self.max_clique_sizes = max_clique_sizes
+        self.reward_loss = reward_loss
+        self.reward_success = reward_success
 
-    degrees = adj.sum(dim=1)
+    def _compute_step_reward(self, obs):
+        """Computes the color sum reward."""
+        total_reward = 0.0
+        for color in self.reward_colors:
+            graph_dict = env_utils.adj_vec_to_dict(obs, color)
+            clique_list = clique_algorithms.bron_kerbosch(graph_dict)
 
-    avg_degree = degrees.mean().item()
-    """if degrees.min().item() < regular_degree:
-        # not a d-regular graph
-        return -avg_degree, False, {"not_regular": True}"""
+            has_max_clique = False
+            if clique_list:
+                self.info["cliques_lists"][f"color_{color}"] = clique_list
+                len_cliques = [len(clique) for clique in clique_list]
+                if max(len_cliques) >= self.max_clique_sizes[color]:
+                    has_max_clique = True
 
-    # compute smallest eigenvalue
-    eigenvalues = torch.linalg.eigvalsh(adj)
-    smallest_eigenvalue = eigenvalues[0].real.item()
+            if not has_max_clique:
+                total_reward += self.reward_success
+            else:
+                total_reward += self.reward_loss
 
-    beta = 1.0  # scaling factor for the eigenvalue term
-    reward = -avg_degree + beta * min(
-        0, smallest_eigenvalue - (ramsey_env.n_vertices * regular_degree /
-                                  (ramsey_env.n_vertices - regular_degree)))
-    #print('reward:', reward, 'avg_degree:', avg_degree, 'smallest_eigenvalue:', smallest_eigenvalue)
+        # Check if the graph is fully colored
+        done = False
+        if not torch.any(obs == -1).item():
+            done = True
+            if self._check_counterexample():
+                self.info["is_counterexample"] = True
 
-    # check terminal conditions
-    found_max_clique = ramsey_env.has_max_clique(action_color,
-                                                 ramsey_env.n_red_vertices)
-    if found_max_clique:
-        done = True
-        return reward, done, {"violation_color": action_color}
+        return total_reward, done, self.info
 
-    return reward, False, {}
-
-
-def hoffman_simple_reward(ramsey_env, action_color: int, regular_degree: int):
-    """Computes the Hoffman simle reward.
-    
-    The Hoffman bound states that for a d-regular graph, the independence number \alpha(G) is bounded by:
-    \alpha(G) <= n * (-lambda_min) / (d - lambda_min)
-    where lambda_min is the smallest eigenvalue of the adjacency matrix of G.
-    """
-    adjacency_matrix = ramsey_env._edges_to_adjacency_tensor(action_color)
-    eigenvalue_min = torch.linalg.eigvalsh(adjacency_matrix).min().item()
-    # TODO: fix "The algorithm failed to converge because the input matrix is ill-conditioned or has too many repeated eigenvalues (error code: 1).""
-    mean_degree = adjacency_matrix.sum().item() / ramsey_env.n_vertices
-    reward = ramsey_env.n_vertices * (-eigenvalue_min) / (mean_degree -
-                                                          eigenvalue_min)
-
-    # check terminal conditions
-    found_max_clique = ramsey_env.has_max_clique(action_color,
-                                                 ramsey_env.n_red_vertices)
-    if found_max_clique:
-        done = True
-        return reward, done, {"violation_color": action_color}
-    return reward, False, {}
-
-
-def max_eigenvalue_reward(ramsey_env, action_color: int):
-    """Computes the maximum eigenvalue reward.
-
-    The reward is defined as the maximum eigenvalue of the adjacency matrix of
-    the graph formed by the edges of the given color.
-    Based on: https://doi.org/10.1016/j.disc.2025.114694
-    """
-    adjacency_matrix = ramsey_env._edges_to_adjacency_tensor(action_color)
-    max_eigenvalue = torch.linalg.eigvalsh(adjacency_matrix).max().item()
-    reward = max_eigenvalue
-
-    # check terminal conditions
-    found_max_clique = ramsey_env.has_max_clique(action_color,
-                                                 ramsey_env.n_red_vertices)
-    if found_max_clique:
-        done = True
-        return reward, done, {"violation_color": action_color}
-    return reward, False, {}
+    def _check_counterexample(self) -> bool:
+        """Checks if a counterexample is found.
+        
+        Can only be checked if graph is fully colored.
+        """
+        for color in self.reward_colors:
+            clique_list = self.info["cliques_lists"].get(f"color_{color}", [])
+            len_cliques = [len(clique) for clique in clique_list]
+            if len_cliques and max(len_cliques) >= self.max_clique_sizes[color]:
+                return False
+        return True

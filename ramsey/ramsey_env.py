@@ -1,13 +1,12 @@
 """The ramsey environment."""
 
-from typing import Optional, Tuple, List, Union
+from typing import Optional, List, Union
+
 import itertools
 
 import torch
-from torch import Tensor
-import matplotlib.pyplot as plt
-import matplotlib.animation as animation
 
+from ramsey.action_types import BaseActionStrategy
 from ramsey import env_utils
 from ramsey import rewards
 
@@ -20,6 +19,7 @@ class RamseyEnv():
                  clique_sizes: List[int],
                  init_method_name: str = "empty",
                  reward_strategy: rewards.RewardStrategy = None,
+                 action_strategy: BaseActionStrategy = None,
                  init_params=None,
                  device: Optional[Union[str, torch.device]] = None) -> None:
         """Initialize the Ramsey Environment."""
@@ -42,6 +42,7 @@ class RamseyEnv():
         self.init_function = env_utils.get_init_function(self.init_method_name)
 
         self.reward_strategy = reward_strategy
+        self.action_strategy = action_strategy
 
     def reset(self) -> torch.Tensor:
         """Resets environment."""
@@ -62,10 +63,12 @@ class RamseyEnv():
             reward_function: Callable function that attributes a value to
               action.
         """
+        self.steps += 1
         if self.done:
             raise RuntimeError("Episode has finished. Call reset().")
 
-        action_color, action_idx = env_utils.decode_action(self, action)
+        action_color, action_idx = self.action_strategy.decode_action(
+            self, action)
         self.adjacency_vec[action_idx] = action_color
 
         reward, done, info = self.reward_strategy.compute_reward(
