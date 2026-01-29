@@ -9,13 +9,10 @@ This module provides core CEM components for finding Ramsey graph colorings:
 """
 
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List
 
 import torch
 import torch.nn as nn
-
-from ramsey import clique_algorithms
-from ramsey import env_utils
 
 
 @dataclass
@@ -137,12 +134,10 @@ def collect_trajectory(
         actions.append(action)
         obs, reward, _, done, info = env.step(action)
 
-    return Trajectory(
-        observations=observations,
-        actions=actions,
-        score=reward,
-        info=info
-    )
+    return Trajectory(observations=observations,
+                      actions=actions,
+                      score=reward,
+                      info=info)
 
 
 def collect_population(
@@ -189,30 +184,6 @@ def select_elite_by_fraction(
     )
     n_elite = max(1, int(len(trajectories) * elite_fraction))
     return sorted_trajectories[:n_elite]
-
-
-def select_elite_by_percentile(
-    trajectories: List[Trajectory],
-    elite_percentile: float,
-) -> List[Trajectory]:
-    """Select top-performing trajectories by percentile threshold.
-
-    Args:
-        trajectories: List of trajectories to select from.
-        elite_percentile: Percentile threshold (0.0 to 100.0).
-
-    Returns:
-        List of elite trajectories sorted by score (descending).
-    """
-    sorted_trajectories = sorted(
-        trajectories,
-        key=lambda t: t.score,
-        reverse=True,
-    )
-    scores = [t.score for t in trajectories]
-    threshold = torch.tensor(scores).quantile(elite_percentile / 100.0).item()
-    elite = [t for t in sorted_trajectories if t.score >= threshold]
-    return elite if elite else sorted_trajectories[:1]
 
 
 def train_on_elite(
@@ -262,257 +233,3 @@ def train_on_elite(
         total_loss += loss.item()
 
     return total_loss / supervised_steps
-
-
-def chord_lengths_to_adjacency_vec(
-    n_vertices: int,
-    chord_colors: torch.Tensor,
-) -> torch.Tensor:
-    """Convert chord length colors to flattened upper triangular adjacency.
-
-    Circulant graphs are defined by chord lengths. Given numbered vertices,
-    vertex i connects to vertices (i + k) mod n for each chord length k.
-
-    Args:
-        n_vertices: Number of vertices in the graph.
-        chord_colors: Tensor of size (n_chord_lengths,) with color for each
-            chord length. Chord length k is at index k-1.
-
-    Returns:
-        Flattened upper triangular adjacency vector.
-    """
-    n_edges = n_vertices * (n_vertices - 1) // 2
-    adjacency_vec = torch.zeros(n_edges, dtype=torch.long)
-
-    for chord_idx, color in enumerate(chord_colors):
-        chord_length = chord_idx + 1
-        edge_indices = env_utils.chord_length_to_edge_indices(
-            n_vertices, chord_length)
-        for idx in edge_indices:
-            adjacency_vec[idx] = color.long()
-
-    return adjacency_vec
-
-
-def evaluate_graph(
-    adjacency_vec: torch.Tensor,
-    clique_sizes: List[int],
-) -> Tuple[bool, int, dict]:
-    """Evaluate a circulant graph for Ramsey violations.
-
-    A Ramsey violation occurs if there exists a monochromatic clique of size
-    greater than or equal to the specified maximum clique size for that color.
-
-    Args:
-        adjacency_vec: Flattened upper triangular adjacency vector.
-        clique_sizes: List of maximum clique sizes for each color.
-
-    Returns:
-        Tuple of (is_valid, total_violations, violation_details).
-        is_valid is True if no color has a monochromatic clique of the
-        corresponding size.
-    """
-    total_violations = 0
-    violation_details = {}
-
-    for color, max_size in enumerate(clique_sizes):
-        graph_dict = env_utils.adj_vec_to_dict(adjacency_vec, color)
-        cliques = clique_algorithms.bron_kerbosch(graph_dict)
-
-        max_clique_found = 0
-        if cliques:
-            max_clique_found = max(len(c) for c in cliques)
-
-        if max_clique_found >= max_size:
-            violations = max_clique_found - max_size + 1
-            total_violations += violations
-            violation_details[color] = {
-                "max_clique": max_clique_found,
-                "violations": violations
-            }
-
-    is_valid = total_violations == 0
-    return is_valid, total_violations, violation_details
-
-
-def score_circulant(
-    chord_colors: torch.Tensor,
-    n_vertices: int,
-    clique_sizes: List[int],
-) -> float:
-    """Score a circulant graph configuration.
-
-    Higher scores are better. Returns negative violations count,
-    so the best score is 0 (no violations).
-
-    Args:
-        chord_colors: Tensor of colors for each chord length.
-        n_vertices: Number of vertices.
-        clique_sizes: Maximum clique sizes for each color.
-
-    Returns:
-        Score (negative of total violations).
-    """
-    adjacency_vec = chord_lengths_to_adjacency_vec(n_vertices, chord_colors)
-    _, violations, _ = evaluate_graph(adjacency_vec, clique_sizes)
-    return -violations
-
-
-class CirculantCEM:
-    """Cross-Entropy Method for Ramsey graph search.
-
-    Args:
-        n_vertices: Number of vertices in the graph.
-        clique_sizes: Maximum clique sizes for each color.
-        population_size: Number of samples per iteration.
-        elite_fraction: Fraction of samples to use as elites.
-        initial_prob: Initial probability for color 1 (vs color 0).
-        learning_rate: How fast to update probabilities toward elite mean.
-        device: Torch device.
-    """
-
-    def __init__(
-        self,
-        n_vertices: int,
-        clique_sizes: List[int],
-        population_size: int = 64,
-        elite_fraction: float = 0.2,
-        initial_prob: float = 0.5,
-        learning_rate: float = 0.5,
-        device: str = "cpu",
-    ):
-        """Initialize CEM for circulant graphs."""
-        self.n_vertices = n_vertices
-        self.clique_sizes = clique_sizes
-        self.population_size = population_size
-        self.n_elite = max(1, int(population_size * elite_fraction))
-        self.learning_rate = learning_rate
-        self.device = torch.device(device)
-
-        # Number of chord lengths is floor(n/2)
-        self.n_chord_lengths = n_vertices // 2
-
-        # prob[i] = probability that chord i+1 has color 1
-        self.probs = torch.full(
-            (self.n_chord_lengths, ),
-            initial_prob,
-            dtype=torch.float,
-            device=self.device,
-        )
-
-        self.best_score = float("-inf")
-        self.best_solution = None
-
-    def sample_population(self) -> torch.Tensor:
-        """Sample a population of chord colorings.
-
-        Returns:
-            Tensor of shape (population_size, n_chord_lengths) with colors.
-        """
-        samples = torch.bernoulli(
-            self.probs.unsqueeze(0).expand(self.population_size, -1)).long()
-        return samples
-
-    def evaluate_population(
-        self,
-        population: torch.Tensor,
-    ) -> Tuple[torch.Tensor, List[bool]]:
-        """Evaluate all samples in the population.
-
-        Args:
-            population: Tensor of shape (population_size, n_chord_lengths).
-
-        Returns:
-            Tuple of (scores tensor, list of validity flags).
-        """
-        scores = []
-        valid_flags = []
-
-        for i in range(self.population_size):
-            chord_colors = population[i]
-            score = score_circulant(chord_colors, self.n_vertices,
-                                    self.clique_sizes)
-            scores.append(score)
-            valid_flags.append(score == 0)
-
-        return torch.tensor(scores), valid_flags
-
-    def update_probabilities(
-        self,
-        population: torch.Tensor,
-        scores: torch.Tensor,
-    ):
-        """Update probabilities based on elite samples.
-
-        Args:
-            population: Tensor of shape (population_size, n_chord_lengths).
-            scores: Tensor of scores for each sample.
-        """
-        # Get elite indices (highest scores)
-        elite_indices = torch.argsort(scores, descending=True)[:self.n_elite]
-        elite_samples = population[elite_indices]
-
-        # Compute mean color for each chord among elites
-        elite_mean = elite_samples.float().mean(dim=0)
-
-        # Update probabilities with learning rate
-        self.probs = ((1 - self.learning_rate) * self.probs +
-                      self.learning_rate * elite_mean)
-
-        # Clamp probabilities to avoid extremes
-        self.probs = torch.clamp(self.probs, 0.01, 0.99)
-
-        # Track best solution
-        best_idx = elite_indices[0]
-        if scores[best_idx] > self.best_score:
-            self.best_score = scores[best_idx].item()
-            self.best_solution = population[best_idx].clone()
-
-    def run(self, num_iterations: int) -> Tuple[torch.Tensor, float, bool]:
-        """Run CEM optimization.
-
-        Args:
-            num_iterations: Number of iterations to run.
-
-        Returns:
-            Tuple of (best_solution, best_score, found_valid).
-        """
-        found_valid = False
-
-        for _ in range(num_iterations):
-            # Sample population
-            population = self.sample_population()
-
-            # Evaluate
-            scores, valid_flags = self.evaluate_population(population)
-
-            # Update probabilities
-            self.update_probabilities(population, scores)
-
-            # Check for valid solutions
-            if any(valid_flags):
-                found_valid = True
-
-            # Early stopping if we found valid solutions
-            if self.best_score == 0:
-                break
-
-        return self.best_solution, self.best_score, found_valid
-
-    def get_solution_chords(self) -> Tuple[List[int], List[int]]:
-        """Get chord assignments for the best solution found.
-
-        Returns:
-            Tuple of (red_chords, blue_chords) where each is a list of
-            chord lengths assigned to that color.
-        """
-        if self.best_solution is None:
-            return [], []
-
-        red_chords = [
-            i + 1 for i, c in enumerate(self.best_solution) if c == 0
-        ]
-        blue_chords = [
-            i + 1 for i, c in enumerate(self.best_solution) if c == 1
-        ]
-        return red_chords, blue_chords
