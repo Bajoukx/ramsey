@@ -1,5 +1,6 @@
 """Gym environment wrapper for Ramsey problem."""
 
+from dataclasses import dataclass
 from typing import List, Optional, Union
 import abc
 
@@ -8,7 +9,34 @@ import torch
 
 from ramsey import action_types
 from ramsey import ramsey_env
+from ramsey import rendering
 from ramsey import rewards
+
+
+@dataclass
+class Trajectory:
+    """A single trajectory (construction) from the environment.
+
+    Stores the sequence of observations and actions taken during an episode,
+    along with the final score achieved.
+
+    Args:
+        observations: List of observations at each step.
+        actions: List of actions taken at each step.
+        rewards: List of rewards received at each step.
+    """
+    observations: List[torch.Tensor]
+    actions: List[int]
+    rewards: List[float]
+    info: dict = None
+
+    def add_step(self, observation: torch.Tensor, action: int, reward: float,
+                 info: dict):
+        """Appends a single step's data to the trajectory."""
+        self.observations.append(observation)
+        self.actions.append(action)
+        self.rewards.append(reward)
+        self.info = info
 
 
 class BaseRamseyGymEnv(gymnasium.Env, abc.ABC):
@@ -42,7 +70,7 @@ class BaseRamseyGymEnv(gymnasium.Env, abc.ABC):
                                                       shape=(self.n_edges,),
                                                       dtype=int)
 
-        self.episode_rewards = []
+        self.trajectory = Trajectory(observations=[], actions=[], rewards=[])
         assert render_mode is None or render_mode in self.metadata[
             "render_modes"]
 
@@ -52,6 +80,14 @@ class BaseRamseyGymEnv(gymnasium.Env, abc.ABC):
         """Decodes an action integer into its components."""
         raise NotImplementedError
 
+    @abc.abstractmethod
+    def truncate_episode(self) -> bool:
+        """Truncates the episode if a maximum step count is reached.
+        
+        Default behavior is to not truncate.
+        """
+        return False
+
     def reset(self):
         """Reset the environment.
 
@@ -59,7 +95,8 @@ class BaseRamseyGymEnv(gymnasium.Env, abc.ABC):
         compatibility and performance.
         """
         observation, info = self.env.reset()
-        self.episode_rewards = []
+        # First observation has no associated action or reward
+        self.trajectory = Trajectory(observations=[], actions=[], rewards=[])
         return observation, info
 
     def step(self, action: int):
@@ -69,14 +106,16 @@ class BaseRamseyGymEnv(gymnasium.Env, abc.ABC):
         compatibility and performance.
         """
         observation, reward, done, info = self.env.step(action)
-        self.episode_rewards.append(reward)
-        truncated = False  # No time limits
+        self.trajectory.add_step(observation, action, reward, info)
+        truncated = self.truncate_episode()
         return observation, reward, truncated, done, info
 
     def render(self, mode: str = "None"):
         """Renders the environment."""
         if mode == "None":
             return
+        elif mode == "static":
+            rendering.static_render(self.env)
         else:
             raise NotImplementedError(
                 f"Render mode '{mode}' is not implemented yet.")
@@ -186,3 +225,12 @@ class RamseyGymEnvV2(BaseRamseyGymEnv):
     def action_space(self):
         action_dim = self.env.n_chord_lengths * self.n_colors
         return gymnasium.spaces.Discrete(action_dim)
+
+    def truncate_episode(self) -> bool:
+        """Truncates the episode if a maximum step count is reached.
+        
+        Here, we set the maximum steps to be the number of chord lengths *
+        number of colors.
+        """
+        max_steps = self.env.n_chord_lengths * self.n_colors
+        return self.env.steps >= max_steps

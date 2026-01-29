@@ -17,6 +17,7 @@ import torch.nn as nn
 
 from ramsey import cross_entropy_method
 from ramsey import gym_ramsey_env
+from ramsey import rendering
 from ramsey import rewards
 
 FLAGS = flags.FLAGS
@@ -41,29 +42,12 @@ def log_solution(adjacency_vec: torch.Tensor, n_vertices: int,
         n_vertices: Number of vertices.
         clique_sizes: Maximum clique sizes for each color.
     """
-    logging.info("\n%s", "=" * 60)
     logging.info(
         "Graph Solution for R(%d,%d) on %d vertices",
         clique_sizes[0],
         clique_sizes[1],
         n_vertices,
     )
-    logging.info("%s", "=" * 60)
-
-    is_valid, violations, details = cross_entropy_method.evaluate_graph(
-        adjacency_vec, clique_sizes)
-
-    logging.info("Valid critical ramsey graph found: %s", is_valid)
-    logging.info("Total number of bigger than expected cliques: %s", violations)
-
-    if details:
-        for color, info in details.items():
-            logging.info(
-                "Color %s: max clique = %s (limit %s)",
-                color,
-                info["max_clique"],
-                clique_sizes[color],
-            )
 
     logging.info("Final adjacency vector: %s", adjacency_vec.tolist())
 
@@ -118,7 +102,7 @@ def main(_):
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(policy.parameters(), lr=FLAGS.learning_rate)
 
-    best_score = float("-inf")
+    best_reward = float("-inf")
     best_trajectory = None
 
     # Main CEM loop
@@ -132,31 +116,33 @@ def main(_):
         )
 
         # Track best trajectory
-        current_best = max(trajectories, key=lambda t: t.score)
-        logging.debug("Current best score: %.4f", current_best.score)
-        logging.debug("Current best trajectory adjacency: %s",
+        current_best = max(trajectories, key=lambda t: t.rewards)
+        current_best_reward = current_best.rewards[-1]
+        logging.debug("Current best reward: %.4f", current_best_reward)
+        logging.debug("Current best adjacency: %s",
                       current_best.observations[-1].tolist())
-        logging.debug("Current best trajectory info: %s", current_best.info)
-        if current_best.score > best_score:
-            best_score = current_best.score
+        logging.debug("Current best info: %s", current_best.info)
+
+        if current_best_reward > best_reward:
+            best_reward = current_best_reward
             best_trajectory = current_best
             logging.info(
-                "Iteration %d: New best score: %.4f",
+                "Iteration %d: New best reward: %.4f",
                 iteration,
-                best_score,
+                best_reward,
             )
 
         # Check if we found a counterexample
-        if "is_counterexample" in best_trajectory.info:
+        if current_best.info["is_counterexample"]:
             logging.info("SUCCESS: Counterexample found at iteration %d!",
                          iteration)
+            rendering.render_graph_from_adj_vec(
+                current_best.observations[-1], n_vertices)
             break
 
         # Select elite trajectories
         elite_trajectories = cross_entropy_method.select_elite_by_fraction(
-            trajectories=trajectories,
-            elite_fraction=FLAGS.elite_fraction,
-        )
+            trajectories=trajectories, elite_fraction=FLAGS.elite_fraction)
 
         # Train policy on elite trajectories
         avg_loss = cross_entropy_method.train_on_elite(
@@ -165,20 +151,16 @@ def main(_):
             optimizer=optimizer,
             criterion=criterion,
             supervised_steps=FLAGS.supervised_steps,
-            device=device,
-        )
+            device=device)
 
         # Log progress
-        scores = [t.score for t in trajectories]
-        elite_scores = [t.score for t in elite_trajectories]
+        reward_list = [t.rewards[-1] for t in trajectories]
+        elite_rewards = [t.rewards[-1] for t in elite_trajectories]
         if iteration % 10 == 0 or iteration == 1:
-            logging.info(
-                "Iteration %d: Mean=%.4f, Elite mean=%.4f, Loss=%.4f",
-                iteration,
-                sum(scores) / len(scores),
-                sum(elite_scores) / len(elite_scores),
-                avg_loss,
-            )
+            logging.info("Iteration %d: Mean=%.4f, Elite mean=%.4f, Loss=%.4f",
+                         iteration,
+                         sum(reward_list) / len(reward_list),
+                         sum(elite_rewards) / len(elite_rewards), avg_loss)
 
     # log final results
     if best_trajectory is not None:
@@ -187,9 +169,9 @@ def main(_):
 
     if "is_counterexample" in best_trajectory.info:
         logging.info("SUCCESS: Found valid Ramsey coloring! Best score: %s",
-                     best_score)
+                     best_reward)
     else:
-        logging.info("No valid coloring found. Best score: %s", best_score)
+        logging.info("No valid coloring found. Best score: %s", best_reward)
 
 
 if __name__ == "__main__":

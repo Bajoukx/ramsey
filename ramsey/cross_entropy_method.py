@@ -103,83 +103,61 @@ class PolicyNetwork(nn.Module):
         return action
 
 
-def collect_trajectory(
-    env,
-    policy: PolicyNetwork,
-    device: str = "cpu",
-) -> Trajectory:
+def collect_trajectory(env, policy: PolicyNetwork, device: str = "cpu"):
     """Collect a single trajectory by running policy in environment.
 
     Args:
         env: A Gymnasium-compatible environment with reset() and step().
-        policy: The policy network for action selection.
-        device: Device for tensor operations.
 
     Returns:
-        A Trajectory containing observations, actions, and final score.
+        The environment after completing the trajectory.
     """
-    observations = []
-    actions = []
-
     obs, _ = env.reset()
     done = False
 
     while not done:
         obs_tensor = obs.float().unsqueeze(0).to(device)
-        observations.append(obs.clone())
-
         with torch.no_grad():
             action = policy.sample_action(obs_tensor)
 
-        actions.append(action)
-        obs, reward, _, done, info = env.step(action)
-
-    return Trajectory(observations=observations,
-                      actions=actions,
-                      score=reward,
-                      info=info)
+        obs, _, truncated, done, _ = env.step(action)
+        if truncated:
+            done = True
+    return env
 
 
-def collect_population(
-    env,
-    policy: PolicyNetwork,
-    population_size: int,
-    device: str = "cpu",
-) -> List[Trajectory]:
-    """Collect a population of trajectories.
-
+def collect_population(env,
+                       policy: PolicyNetwork,
+                       population_size: int,
+                       device: str = "cpu"):
+    """Collect a population of environments.
+    
     Args:
         env: A Gymnasium-compatible environment.
         policy: The policy network for action selection.
         population_size: Number of trajectories to collect.
-        device: Device for tensor operations.
-
     Returns:
-        List of Trajectory objects.
+        List of environments
     """
     trajectories = []
     for _ in range(population_size):
-        traj = collect_trajectory(env, policy, device)
-        trajectories.append(traj)
+        env_instance = collect_trajectory(env, policy, device)
+        trajectories.append(env_instance.trajectory)
     return trajectories
 
 
-def select_elite_by_fraction(
-    trajectories: List[Trajectory],
-    elite_fraction: float,
-) -> List[Trajectory]:
+def select_elite_by_fraction(trajectories, elite_fraction: float):
     """Select top-performing trajectories by fraction.
 
     Args:
         trajectories: List of trajectories to select from.
         elite_fraction: Fraction of trajectories to keep (0.0 to 1.0).
-
     Returns:
         List of elite trajectories sorted by score (descending).
     """
     sorted_trajectories = sorted(
         trajectories,
-        key=lambda t: t.score,
+        key=lambda e: e.rewards,
         reverse=True,
     )
     n_elite = max(1, int(len(trajectories) * elite_fraction))

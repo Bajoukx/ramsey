@@ -68,12 +68,17 @@ class RewardStrategy(abc.ABC):
 
         self.info = {
             "cliques_lists": {},
-            "max_clique_sizes": {}
+            "max_clique_size": {},
+            "is_counterexample": False
         }
 
-    def reset_total_reward(self):
-        """Resets the total reward."""
-        self.total_reward = 0.0
+    def reset_reward_info(self):
+        """Resets the reward strategy state."""
+        self.info = {
+            "cliques_lists": {},
+            "max_clique_size": {},
+            "is_counterexample": False
+        }
 
     @abc.abstractmethod
     def _compute_step_reward(self, obs):
@@ -92,7 +97,6 @@ class RewardStrategy(abc.ABC):
     def _check_counterexample(self) -> bool:
         """Checks if the observation is a counterexample."""
         raise NotImplementedError
-
 
 
 class SimpleRewardStrategy(RewardStrategy):
@@ -120,8 +124,7 @@ class SimpleRewardStrategy(RewardStrategy):
             - no monochromatic clique in all reward_colors:
               terminal_reward_success and done
         """
-        super().__init__(cumulative=cumulative,
-                         reward_colors=reward_colors)
+        super().__init__(cumulative=cumulative, reward_colors=reward_colors)
         self.max_clique_size = max_clique_size
         self.reward_loss = reward_loss
         self.terminal_reward_success = terminal_reward_success
@@ -141,7 +144,10 @@ class SimpleRewardStrategy(RewardStrategy):
 
             if clique_list:
                 len_cliques = [len(clique) for clique in clique_list]
-                if max(len_cliques) >= self.max_clique_size:
+                info_max_clique_size = max(len_cliques)
+                self.info["max_clique_size"][
+                    f"color_{color}"] = info_max_clique_size
+                if info_max_clique_size >= self.max_clique_size:
                     has_max_clique = True
 
         # Check if the graph is fully colored
@@ -190,15 +196,16 @@ class ColorSumRewardStrategy(RewardStrategy):
         Assumes colors are represented as integers starting from 0, non-colored
         as -1.
         """
-        super().__init__(cumulative=cumulative,
-                         reward_colors=reward_colors)
+        super().__init__(cumulative=cumulative, reward_colors=reward_colors)
         self.max_clique_sizes = max_clique_sizes
         self.reward_loss = reward_loss
         self.reward_success = reward_success
 
     def _compute_step_reward(self, obs):
         """Computes the color sum reward."""
+        self.reset_reward_info()
         total_reward = 0.0
+        has_uncolored = torch.any(obs == -1).item()
         for color in self.reward_colors:
             graph_dict = env_utils.adj_vec_to_dict(obs, color)
             clique_list = clique_algorithms.bron_kerbosch(graph_dict)
@@ -207,19 +214,22 @@ class ColorSumRewardStrategy(RewardStrategy):
             if clique_list:
                 self.info["cliques_lists"][f"color_{color}"] = clique_list
                 len_cliques = [len(clique) for clique in clique_list]
-                if max(len_cliques) >= self.max_clique_sizes[color]:
+                max_clique_size = max(len_cliques)
+                self.info["max_clique_size"][f"color_{color}"] = max_clique_size
+                if max_clique_size >= self.max_clique_sizes[color]:
                     has_max_clique = True
 
-            if not has_max_clique:
+            if not has_max_clique and not has_uncolored:
                 total_reward += self.reward_success
             else:
                 total_reward += self.reward_loss
 
         # Check if the graph is fully colored
         done = False
-        if not torch.any(obs == -1).item():
+        if not has_uncolored:
             done = True
-            if self._check_counterexample():
+            found_counterexample = self._check_counterexample()
+            if found_counterexample:
                 self.info["is_counterexample"] = True
 
         return total_reward, done, self.info
@@ -232,6 +242,7 @@ class ColorSumRewardStrategy(RewardStrategy):
         for color in self.reward_colors:
             clique_list = self.info["cliques_lists"].get(f"color_{color}", [])
             len_cliques = [len(clique) for clique in clique_list]
+            # Check if there is a clique violating the max size
             if len_cliques and max(len_cliques) >= self.max_clique_sizes[color]:
                 return False
         return True

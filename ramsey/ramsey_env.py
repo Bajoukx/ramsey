@@ -48,6 +48,7 @@ class RamseyEnv():
         """Resets environment."""
         self.adjacency_vec = self.init_function(self, **self.init_params)
         self.done = False
+        self.reward = 0.0
         info = {}
         self.steps = 0
         return self.adjacency_vec.to(self.device), info
@@ -71,6 +72,6 @@ class RamseyEnv():
             self, action)
         self.adjacency_vec[action_idx] = action_color
 
-        reward, done, info = self.reward_strategy.compute_reward(
+        self.reward, self.done, info = self.reward_strategy.compute_reward(
             self.adjacency_vec)
-        return self.adjacency_vec.to(self.device), reward, done, info
+        return self.adjacency_vec.to(self.device), self.reward, self.done, info
