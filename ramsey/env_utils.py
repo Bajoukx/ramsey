@@ -32,7 +32,7 @@ def unflaten_vec_to_adjacency_matrix(
     length = flatened_adjacency.numel()
     n_vertices = int((1 + (1 + 8 * length)**0.5) / 2)
 
-    adj = torch.zeros(n_vertices, n_vertices)
+    adj = torch.zeros(n_vertices, n_vertices, dtype=torch.long)
     idx = torch.triu_indices(n_vertices, n_vertices, offset=1)
     adj[idx[0], idx[1]] = flatened_adjacency
     adj[idx[1], idx[0]] = flatened_adjacency
@@ -42,7 +42,7 @@ def unflaten_vec_to_adjacency_matrix(
 def adj_matrix_to_dict(adjacency_matrix: torch.Tensor, color: int):
     """Convert colored edges to adjacency dict for given color."""
     flatened_adjacency_matrix = flaten_adjacency_matrix(adjacency_matrix)
-    colored_flatened_adjacency = (flatened_adjacency_matrix == color)
+    colored_flatened_adjacency = flatened_adjacency_matrix == color
     colored_edges_idx = colored_flatened_adjacency.nonzero(as_tuple=True)[0]
 
     n_vertices = len(adjacency_matrix[0])
