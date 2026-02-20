@@ -28,11 +28,7 @@ class DefaultActionStrategy(BaseActionStrategy):
 
 
 class TwoActionStrategy(BaseActionStrategy):
-    """Action strategy for 2 * n_colors action space.
-
-    TODO: refactor this class so it takes a either add or do nothing action
-    from enfvironment and infers the edge index.
-    """
+    """Action strategy for n_colors action space."""
     def _infer_edge_idx(self, env):
         """Returns the edge index based on observation.
         
@@ -45,17 +41,11 @@ class TwoActionStrategy(BaseActionStrategy):
     def decode_action(self, env, action: int):
         """Decodes an action into edge indices and color.
         
-        An action is an integer in the set {0, 1, ..., 2 * n_colors - 1}. The
-        first 2 elements are assumed to be edge pass/addition for color 0, the
-        next 2 for color 1, and so on.
+        An action is an integer in the set {0, n_colors}. This makes sure a
+        color is always chosen.
         """
-        color = action // 2
-        add_color = action % 2  # 0: remove, 1: add
-        if add_color:
-            edge_idx = self._infer_edge_idx(env)
-        else:
-            edge_idx = None
-        return color, edge_idx
+        edge_idx = self._infer_edge_idx(env)
+        return action, edge_idx
 
 
 class CirculantActionStrategy(BaseActionStrategy):

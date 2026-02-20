@@ -166,11 +166,11 @@ class RamseyGymEnvV0(BaseRamseyGymEnv):
 class RamseyGymEnvV1(BaseRamseyGymEnv):
     """Gym wrapper for RamseyEnv.
     
-    The V1 version uses a size 2 * n_colors action space and a 2 * n_edges
+    The V1 version uses a size n_colors action space and a n_colors + n_edges
     observation space. The observation space space corresponds to the edge
     coloring and a one-hot encoding of the current vertex index to be colored.
-    The action space corresponds to either adding an edge of a specific color or
-    doing nothing. The edge index is inferred from the observation.
+    The action space corresponds to which color to assign to the current vertex.
+    The edge index is inferred from the observation.
     """
 
     metadata = {"render_modes": ["static", "animated", "None"]}
@@ -201,8 +201,8 @@ class RamseyGymEnvV1(BaseRamseyGymEnv):
                          device=device)
         self.observation_space = gymnasium.spaces.Box(low=0,
                                                       high=self.n_colors - 1,
-                                                      shape=(self.n_edges * \
-                                                      self.n_colors,),
+                                                      shape=(self.n_colors + \
+                                                      self.n_edges,),
                                                       dtype=int)
 
     @property

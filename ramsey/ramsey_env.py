@@ -70,8 +70,7 @@ class RamseyEnv():
 
         action_color, action_idx = self.action_strategy.decode_action(
             self, action)
-        if action_idx is not None:
-            self.adjacency_vec[action_idx] = action_color
+        self.adjacency_vec[action_idx] = action_color
 
         self.reward, self.done, info = self.reward_strategy.compute_reward(
             self.adjacency_vec)
