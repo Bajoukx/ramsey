@@ -28,18 +28,34 @@ class DefaultActionStrategy(BaseActionStrategy):
 
 
 class TwoActionStrategy(BaseActionStrategy):
-    """Action strategy for 2 * n_colors action space."""
+    """Action strategy for 2 * n_colors action space.
+
+    TODO: refactor this class so it takes a either add or do nothing action
+    from enfvironment and infers the edge index.
+    """
+    def _infer_edge_idx(self, env):
+        """Returns the edge index based on observation.
+        
+        This assumes that the observation corresponds to the edge coloring and a
+        one-hot encoding of the current vertex index to be colored.
+        """
+        vertex_one_hot = env.env.adjacency_vec[-env.n_edges:]
+        return vertex_one_hot.argmax().item()
 
     def decode_action(self, env, action: int):
         """Decodes an action into edge indices and color.
         
-        An action is an integer in the set {0, 1, ..., n_colors * 2 - 1}. The
-        first two elements are assumed to be edge addition/pass for color 0, the
-        next two for color 1, and so on.
+        An action is an integer in the set {0, 1, ..., 2 * n_colors - 1}. The
+        first 2 elements are assumed to be edge pass/addition for color 0, the
+        next 2 for color 1, and so on.
         """
-        color = action // env.n_colors
-        add_or_pass = action % 2  # 0: remove, 1: add
-        return color, add_or_pass
+        color = action // 2
+        add_color = action % 2  # 0: remove, 1: add
+        if add_color:
+            edge_idx = self._infer_edge_idx(env)
+        else:
+            edge_idx = None
+        return color, edge_idx
 
 
 class CirculantActionStrategy(BaseActionStrategy):

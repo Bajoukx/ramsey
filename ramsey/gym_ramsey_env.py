@@ -153,12 +153,24 @@ class RamseyGymEnvV0(BaseRamseyGymEnv):
         action_dim = self.n_edges * self.n_colors
         return gymnasium.spaces.Discrete(action_dim)
 
+    def truncate_episode(self) -> bool:
+        """Truncates the episode if a maximum step count is reached.
+        
+        Here, we set the maximum steps to be the number of edges *
+        number of colors.
+        """
+        max_steps = self.n_edges * self.n_colors
+        return self.env.steps >= max_steps
+
 
 class RamseyGymEnvV1(BaseRamseyGymEnv):
     """Gym wrapper for RamseyEnv.
     
-    The V1 version uses a 2 * n_colors action space where each action
-    corresponds to coloring or doing nothing when coloring a graph by order.
+    The V1 version uses a size 2 * n_colors action space and a 2 * n_edges
+    observation space. The observation space space corresponds to the edge
+    coloring and a one-hot encoding of the current vertex index to be colored.
+    The action space corresponds to either adding an edge of a specific color or
+    doing nothing. The edge index is inferred from the observation.
     """
 
     metadata = {"render_modes": ["static", "animated", "None"]}
@@ -173,6 +185,11 @@ class RamseyGymEnvV1(BaseRamseyGymEnv):
         render_mode: Optional[str] = None,
         device: Optional[Union[str, torch.device]] = None,
     ) -> None:
+        """Overrides the default action space.
+        
+        The new observation space now represents the edge coloring and a one-hot
+        encoding of the current vertex index.
+        """
         action_strategy = action_types.TwoActionStrategy()
         super().__init__(n_vertices=n_vertices,
                          clique_sizes=clique_sizes,
@@ -182,10 +199,15 @@ class RamseyGymEnvV1(BaseRamseyGymEnv):
                          init_params=init_params,
                          render_mode=render_mode,
                          device=device)
+        self.observation_space = gymnasium.spaces.Box(low=0,
+                                                      high=self.n_colors - 1,
+                                                      shape=(self.n_edges * \
+                                                      self.n_colors,),
+                                                      dtype=int)
 
     @property
     def action_space(self):
-        action_dim = 2 * self.n_colors
+        action_dim = 2
         return gymnasium.spaces.Discrete(action_dim)
 
 
