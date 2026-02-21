@@ -2,7 +2,6 @@
 
 from absl import app
 from absl import flags
-import psutil
 
 import torch
 import torch.nn as nn
@@ -26,6 +25,7 @@ flags.DEFINE_string("device", "cpu", "Device to use: 'cpu' or 'cuda'.")
 
 
 class Policy(CategoricalMixin, Model):
+    """Policy network for the Ramsey problem."""
 
     def __init__(self,
                  observation_space,
@@ -59,15 +59,14 @@ def main(_):
     reward_strategy = rewards.SimpleRewardStrategy(
         max_clique_size=max(clique_sizes),
         cumulative=True,
-        reward_colors=[0, 1]
-    )
-    env = gym_ramsey_env.RamseyGymEnv(n_vertices=FLAGS.n_vertices,
-                                      clique_sizes=clique_sizes,
-                                      init_method_name="uncolored",
-                                      init_params=None,
-                                      reward_strategy=reward_strategy,
-                                      render_mode=FLAGS.render_mode,
-                                      device=FLAGS.device)
+        reward_colors=[0, 1])
+    env = gym_ramsey_env.RamseyGymEnvV0(n_vertices=FLAGS.n_vertices,
+                                        clique_sizes=clique_sizes,
+                                        init_method_name="uncolored",
+                                        init_params=None,
+                                        reward_strategy=reward_strategy,
+                                        render_mode=FLAGS.render_mode,
+                                        device=FLAGS.device)
     env = wrap_env(env, wrapper="gymnasium")
 
     memory = RandomMemory(memory_size=5000,
@@ -99,9 +98,7 @@ def main(_):
                 action_space=env.action_space,
                 device=FLAGS.device)
 
-    trainer = SequentialTrainer(cfg={"timesteps": 50000},
-                                env=env,
-                                agents=agent)
+    trainer = SequentialTrainer(cfg={"timesteps": 50000}, env=env, agents=agent)
 
     trainer.train()
 
