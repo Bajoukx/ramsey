@@ -35,7 +35,7 @@ class TwoActionStrategy(BaseActionStrategy):
         This assumes that the observation corresponds to the edge coloring and a
         one-hot encoding of the current vertex index to be colored.
         """
-        vertex_one_hot = env.env.adjacency_vec[-env.n_edges:]
+        vertex_one_hot = env.adjacency_vec[-env.n_edges:]
         return vertex_one_hot.argmax().item()
 
     def decode_action(self, env, action: int):

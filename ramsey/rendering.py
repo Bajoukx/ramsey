@@ -41,6 +41,8 @@ def render_graph_from_adj_vec(adjacency_vec, n_vertices):
                   edge_color=edge_colors,
                   node_color="lightgray",
                   node_size=500)
+
+    plt.gca().set_aspect("equal")
     plt.show()
 
 
@@ -65,7 +67,7 @@ def static_render(env):
         graph.add_edge(u, v, color=edge_color)
         colors.append(edge_color)
 
-    pos = networkx.spring_layout(graph)
+    pos = networkx.circular_layout(graph)
     edge_colors = [graph[u][v]["color"] for u, v in graph.edges()]
     networkx.draw(graph,
                   pos,
@@ -73,4 +75,6 @@ def static_render(env):
                   edge_color=edge_colors,
                   node_color="lightgray",
                   node_size=500)
+
+    plt.gca().set_aspect("equal")
     plt.show()

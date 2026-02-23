@@ -120,9 +120,8 @@ def collect_trajectory(env, policy: PolicyNetwork, device: str = "cpu"):
         with torch.no_grad():
             action = policy.sample_action(obs_tensor)
 
-        obs, _, truncated, done, _ = env.step(action)
-        if truncated:
-            done = True
+        obs, _, terminated, truncated, _ = env.step(action)
+        done = terminated or truncated
     return env
 
 

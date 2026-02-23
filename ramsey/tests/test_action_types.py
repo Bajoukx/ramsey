@@ -35,7 +35,6 @@ class MockEnv:
         # Generate edges in combinations order
         self.all_edges = list(itertools.combinations(range(n_vertices), 2))
 
-        # For TwoActionStrategy: env.env.adjacency_vec structure
         # Create nested env structure to match the actual usage
         self.env = self
 

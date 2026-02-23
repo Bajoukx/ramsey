@@ -108,7 +108,7 @@ class BaseRamseyGymEnv(gymnasium.Env, abc.ABC):
         observation, reward, done, info = self.env.step(action)
         self.trajectory.add_step(observation, action, reward, info)
         truncated = self.truncate_episode()
-        return observation, reward, truncated, done, info
+        return observation, reward, done, truncated, info
 
     def render(self, mode: str = "None"):
         """Renders the environment."""
@@ -209,6 +209,10 @@ class RamseyGymEnvV1(BaseRamseyGymEnv):
     def action_space(self):
         action_dim = 2
         return gymnasium.spaces.Discrete(action_dim)
+
+    def truncate_episode(self) -> bool:
+        """V1 does not truncate episodes by default."""
+        return False
 
 
 class RamseyGymEnvV2(BaseRamseyGymEnv):
