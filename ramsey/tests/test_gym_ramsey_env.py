@@ -10,6 +10,7 @@ from ramsey.gym_ramsey_env import (
     RamseyGymEnvV0,
     RamseyGymEnvV1,
     RamseyGymEnvV2,
+    make_sync_vector_env,
 )
 from ramsey.action_types import (
     DefaultActionStrategy,
@@ -41,10 +42,10 @@ class TestBaseWrapperObservationSpace:
 
         Verifies:
         - Space is gymnasium.spaces.Box
-        - Low bound is 0
+        - Low bound is -1
         - High bound is n_colors - 1
         - Shape is (n_edges,)
-        - dtype is int
+        - dtype is float32
         """
         env = DummyBaseRamseyGymEnv(
             n_vertices=4,
@@ -72,25 +73,14 @@ class TestBaseWrapperObservationSpace:
             f"Observation space shape should be {expected_shape}"
 
         # n_colors = 2, so high should be 1
-        assert obs_space.low.min() == 0, "Low bound should be 0"
+        assert obs_space.low.min() == -1, "Low bound should be -1"
         assert obs_space.high.max() == 1, \
             "High bound should be n_colors - 1 = 1"
 
-        # dtype should be int
-        assert obs_space.dtype == int, "dtype should be int"
+        assert str(obs_space.dtype) == "float32", "dtype should be float32"
 
-    def test_base_wrapper_obs_bounds_mismatch_documented(self):
-        """Test observation space bounds don't match uncolored observations.
-
-        KNOWN GOTCHA: The wrapper defines Box(low=0, ...) but uncolored
-        observations contain -1 values, causing observation_space.contains(obs)
-        to return False.
-
-        Verifies:
-        - Observation space declares low=0
-        - Uncolored observations contain -1
-        - observation_space.contains(obs) returns False (API compliance gotcha)
-        """
+    def test_base_wrapper_observation_space_contains_uncolored_obs(self):
+        """Test observation space correctly contains uncolored observations."""
         env = DummyBaseRamseyGymEnv(
             n_vertices=3,
             clique_sizes=[3, 3],
@@ -109,11 +99,8 @@ class TestBaseWrapperObservationSpace:
         assert (obs == -1).any().item(), \
             "Uncolored observation should contain -1 values"
 
-        # KNOWN GOTCHA: observation_space.contains() returns False
-        # because bounds declare low=0 but observation contains -1
-        assert not env.observation_space.contains(obs.numpy()), \
-            "observation_space.contains(obs) should return False " \
-            "(documents known bounds mismatch)"
+        assert env.observation_space.contains(obs.numpy()), \
+            "observation_space.contains(obs) should return True"
 
 
 class TestBaseWrapperReset:
@@ -156,6 +143,24 @@ class TestBaseWrapperReset:
         expected_shape = (3,)  # n=3 => C(3,2) = 3 edges
         assert obs.shape == expected_shape, \
             f"Observation shape should be {expected_shape}"
+
+    def test_base_wrapper_reset_accepts_seed_and_options(self):
+        """reset(seed=..., options=...) should be accepted per Gym API."""
+        env = DummyBaseRamseyGymEnv(
+            n_vertices=3,
+            clique_sizes=[3, 3],
+            init_method_name="uncolored",
+            reward_strategy=SimpleRewardStrategy(
+                max_clique_size=3,
+                reward_loss=-1.0,
+                terminal_reward_success=1.0,
+                reward_colors=[0, 1],
+            ),
+        )
+
+        obs, info = env.reset(seed=123, options={"test": True})
+        assert isinstance(obs, torch.Tensor)
+        assert isinstance(info, dict)
 
 
 class TestBaseWrapperStep:
@@ -548,4 +553,50 @@ class TestWrapperRenderModes:
                     reward_colors=[0, 1],
                 ),
                 render_mode="invalid_mode",
+            )
+
+
+class TestVectorEnvHelpers:
+    """Test suite for SyncVectorEnv helper constructors."""
+
+    def test_make_sync_vector_env_reset_and_step(self):
+        env = make_sync_vector_env(
+            env_cls=RamseyGymEnvV0,
+            num_envs=2,
+            n_vertices=4,
+            clique_sizes=[3, 3],
+            init_method_name="uncolored",
+            reward_strategy=SimpleRewardStrategy(
+                max_clique_size=3,
+                reward_loss=-1.0,
+                terminal_reward_success=1.0,
+                reward_colors=[0, 1],
+            ),
+        )
+
+        obs, info = env.reset(seed=123)
+        assert obs.shape[0] == 2
+        assert isinstance(info, dict)
+
+        obs, reward, terminated, truncated, info = env.step([0, 1])
+        assert obs.shape[0] == 2
+        assert reward.shape[0] == 2
+        assert terminated.shape[0] == 2
+        assert truncated.shape[0] == 2
+        assert isinstance(info, dict)
+
+    def test_make_sync_vector_env_invalid_num_envs(self):
+        with pytest.raises(ValueError, match="num_envs"):
+            make_sync_vector_env(
+                env_cls=RamseyGymEnvV0,
+                num_envs=0,
+                n_vertices=4,
+                clique_sizes=[3, 3],
+                init_method_name="uncolored",
+                reward_strategy=SimpleRewardStrategy(
+                    max_clique_size=3,
+                    reward_loss=-1.0,
+                    terminal_reward_success=1.0,
+                    reward_colors=[0, 1],
+                ),
             )

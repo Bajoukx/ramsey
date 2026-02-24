@@ -31,6 +31,8 @@ flags.DEFINE_integer("supervised_steps", 5,
                      "Gradient steps for supervised update")
 flags.DEFINE_integer("hidden_size", 256, "Hidden layer size")
 flags.DEFINE_string("device", "cpu", "Device: 'cpu' or 'cuda'")
+flags.DEFINE_integer("num_envs", 8,
+                     "Number of concurrent environments for collection")
 
 
 def log_solution(adjacency_vec: torch.Tensor, n_vertices: int,
@@ -66,24 +68,28 @@ def main(_):
         n_vertices,
     )
     logging.info("Population size: %d", FLAGS.population_size)
+    logging.info("Concurrent envs: %d", FLAGS.num_envs)
     logging.info("Elite fraction: %s", FLAGS.elite_fraction)
     logging.info("Iterations: %d", FLAGS.num_iterations)
 
-    # Setup reward strategy
-    reward_strategy = rewards.ColorSumRewardStrategy(
-        cumulative=False,
-        reward_colors=[0, 1],
-        max_clique_sizes=clique_sizes,
-        reward_loss=0.0,
-        reward_success=1.0,
-    )
+    def make_env():
+        reward_strategy = rewards.ColorSumRewardStrategy(
+            cumulative=False,
+            reward_colors=[0, 1],
+            max_clique_sizes=clique_sizes,
+            reward_loss=0.0,
+            reward_success=1.0,
+        )
+        return gym_ramsey_env.RamseyGymEnvV2(
+            n_vertices=n_vertices,
+            clique_sizes=clique_sizes,
+            device=device,
+            init_method_name="uncolored",
+            reward_strategy=reward_strategy,
+        )
 
-    # Create circulant environment
-    env = gym_ramsey_env.RamseyGymEnvV2(n_vertices=n_vertices,
-                                        clique_sizes=clique_sizes,
-                                        device=device,
-                                        init_method_name="uncolored",
-                                        reward_strategy=reward_strategy)
+    # Create one environment for spaces metadata
+    env = make_env()
 
     # Observation: flattened adjacency vector
     # Action: chord_length * n_colors (select chord and color)
@@ -105,6 +111,16 @@ def main(_):
     best_reward = float("-inf")
     best_trajectory = None
 
+    def final_reward(traj):
+        return traj.rewards[-1] if traj.rewards else float("-inf")
+
+    def find_counterexample(trajectories):
+        return next(
+            (traj for traj in trajectories
+             if traj.info and traj.info.get("is_counterexample", False)),
+            None,
+        )
+
     # Main CEM loop
     for iteration in range(1, FLAGS.num_iterations + 1):
         # Collect population of trajectories
@@ -113,11 +129,13 @@ def main(_):
             policy=policy,
             population_size=FLAGS.population_size,
             device=device,
+            num_envs=FLAGS.num_envs,
+            env_factory=make_env,
         )
 
         # Track best trajectory
-        current_best = max(trajectories, key=lambda t: t.rewards)
-        current_best_reward = current_best.rewards[-1]
+        current_best = max(trajectories, key=final_reward)
+        current_best_reward = final_reward(current_best)
         logging.debug("Current best reward: %.4f", current_best_reward)
         logging.debug("Current best adjacency: %s",
                       current_best.observations[-1].tolist())
@@ -133,11 +151,14 @@ def main(_):
             )
 
         # Check if we found a counterexample
-        if current_best.info["is_counterexample"]:
+        counterexample_traj = find_counterexample(trajectories)
+        if counterexample_traj is not None:
             logging.info("SUCCESS: Counterexample found at iteration %d!",
                          iteration)
             rendering.render_graph_from_adj_vec(
-                current_best.observations[-1], n_vertices)
+                counterexample_traj.observations[-1], n_vertices)
+            best_trajectory = counterexample_traj
+            best_reward = final_reward(counterexample_traj)
             break
 
         # Select elite trajectories
@@ -154,8 +175,9 @@ def main(_):
             device=device)
 
         # Log progress
-        reward_list = [t.rewards[-1] for t in trajectories]
-        elite_rewards = [t.rewards[-1] for t in elite_trajectories]
+        reward_list = [final_reward(t) for t in trajectories]
+        elite_rewards = [final_reward(t) for t in elite_trajectories]
+
         if iteration % 10 == 0 or iteration == 1:
             logging.info("Iteration %d: Mean=%.4f, Elite mean=%.4f, Loss=%.4f",
                          iteration,
@@ -163,11 +185,11 @@ def main(_):
                          sum(elite_rewards) / len(elite_rewards), avg_loss)
 
     # log final results
-    if best_trajectory is not None:
-        final_adjacency = best_trajectory.observations[-1]
-        log_solution(final_adjacency, n_vertices, clique_sizes)
-
-    if "is_counterexample" in best_trajectory.info:
+    found_counterexample = (best_trajectory is not None and
+                            best_trajectory.info is not None and
+                            best_trajectory.info.get("is_counterexample",
+                                                     False))
+    if found_counterexample:
         logging.info("SUCCESS: Found valid Ramsey coloring! Best score: %s",
                      best_reward)
     else:

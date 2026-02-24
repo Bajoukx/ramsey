@@ -180,7 +180,8 @@ class ColorSumRewardStrategy(RewardStrategy):
 
         # Check if the graph is fully colored
         done = False
-        if not has_uncolored:
+        if not has_uncolored:  # TODO: check for reserved -1 for uncolored
+                               # instead of checking for uncolored.
             done = True
             found_counterexample = self._check_counterexample()
             if found_counterexample:
@@ -189,10 +190,7 @@ class ColorSumRewardStrategy(RewardStrategy):
         return total_reward, done, self.info
 
     def _check_counterexample(self) -> bool:
-        """Checks if a counterexample is found.
-        
-        Can only be checked if graph is fully colored.
-        """
+        """Checks if a counterexample is found."""
         for color in self.reward_colors:
             clique_list = self.info["cliques_lists"].get(f"color_{color}", [])
             len_cliques = [len(clique) for clique in clique_list]

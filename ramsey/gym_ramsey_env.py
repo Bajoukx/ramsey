@@ -1,10 +1,12 @@
 """Gym environment wrapper for Ramsey problem."""
 
 from dataclasses import dataclass
-from typing import List, Optional, Union
+from typing import Callable, List, Optional, Type, Union
 import abc
+import copy
 
 import gymnasium
+import numpy as np
 import torch
 
 from ramsey import action_types
@@ -65,10 +67,10 @@ class BaseRamseyGymEnv(gymnasium.Env, abc.ABC):
         self.n_edges = self.env.n_edges
         self.n_colors = self.env.n_colors
 
-        self.observation_space = gymnasium.spaces.Box(low=0,
+        self.observation_space = gymnasium.spaces.Box(low=-1,
                                                       high=self.n_colors - 1,
                                                       shape=(self.n_edges,),
-                                                      dtype=int)
+                                                      dtype=np.float32)
 
         self.trajectory = Trajectory(observations=[], actions=[], rewards=[])
         assert render_mode is None or render_mode in self.metadata[
@@ -88,12 +90,24 @@ class BaseRamseyGymEnv(gymnasium.Env, abc.ABC):
         """
         return False
 
-    def reset(self):
+    def reset(self,
+              *,
+              seed: Optional[int] = None,
+              options: Optional[dict] = None):
         """Reset the environment.
 
         Resets the tracked episode rewards. Flattens the adjacency matrix for
         compatibility and performance.
         """
+        del options
+        super().reset(seed=seed)
+        if seed is not None:
+            torch.manual_seed(seed)
+
+        if self.env.reward_strategy is not None:
+            self.env.reward_strategy.total_reward = 0.0
+            self.env.reward_strategy.reset_reward_info()
+
         observation, info = self.env.reset()
         # First observation has no associated action or reward
         self.trajectory = Trajectory(observations=[], actions=[], rewards=[])
@@ -199,11 +213,11 @@ class RamseyGymEnvV1(BaseRamseyGymEnv):
                          init_params=init_params,
                          render_mode=render_mode,
                          device=device)
-        self.observation_space = gymnasium.spaces.Box(low=0,
+        self.observation_space = gymnasium.spaces.Box(low=-1,
                                                       high=self.n_colors - 1,
                                                       shape=(self.n_colors + \
                                                       self.n_edges,),
-                                                      dtype=int)
+                                                      dtype=np.float32)
 
     @property
     def action_space(self):
@@ -260,3 +274,23 @@ class RamseyGymEnvV2(BaseRamseyGymEnv):
         """
         max_steps = self.env.n_chord_lengths * self.n_colors
         return self.env.steps >= max_steps
+
+
+def make_env_factory(env_cls: Type[BaseRamseyGymEnv],
+                     **env_kwargs) -> Callable[[], BaseRamseyGymEnv]:
+    """Create a no-arg environment constructor for Gymnasium vector envs."""
+
+    def _factory() -> BaseRamseyGymEnv:
+        return env_cls(**copy.deepcopy(env_kwargs))
+
+    return _factory
+
+
+def make_sync_vector_env(env_cls: Type[BaseRamseyGymEnv], num_envs: int,
+                         **env_kwargs) -> gymnasium.vector.SyncVectorEnv:
+    """Construct a SyncVectorEnv for Ramsey Gym environment variants."""
+    if num_envs < 1:
+        raise ValueError("num_envs must be >= 1")
+
+    env_fns = [make_env_factory(env_cls, **env_kwargs) for _ in range(num_envs)]
+    return gymnasium.vector.SyncVectorEnv(env_fns)

@@ -9,7 +9,7 @@ This module provides core CEM components for finding Ramsey graph colorings:
 """
 
 from dataclasses import dataclass
-from typing import List
+from typing import Callable, List, Optional
 
 import torch
 import torch.nn as nn
@@ -98,9 +98,29 @@ class PolicyNetwork(nn.Module):
         Returns:
             Sampled action index.
         """
+        return int(self.sample_actions(x)[0].item())
+
+    def sample_actions(self, x: torch.Tensor) -> torch.Tensor:
+        """Sample one action per observation in a batch.
+
+        Args:
+            x: Observation tensor of shape (batch, obs_dim).
+
+        Returns:
+            Tensor of sampled action indices of shape (batch,).
+        """
         probs = self.get_action_probs(x)
-        action = torch.multinomial(probs, num_samples=1).item()
-        return action
+        return torch.multinomial(probs, num_samples=1).squeeze(-1)
+
+
+def _obs_to_tensor(obs, device: str) -> torch.Tensor:
+    """Convert observations to float tensor with batch dimension."""
+    obs_tensor = torch.as_tensor(obs)
+    if obs_tensor.dtype != torch.float32:
+        obs_tensor = obs_tensor.float()
+    if obs_tensor.dim() == 1:
+        obs_tensor = obs_tensor.unsqueeze(0)
+    return obs_tensor.to(device)
 
 
 def collect_trajectory(env, policy: PolicyNetwork, device: str = "cpu"):
@@ -116,7 +136,7 @@ def collect_trajectory(env, policy: PolicyNetwork, device: str = "cpu"):
     done = False
 
     while not done:
-        obs_tensor = obs.float().unsqueeze(0).to(device)
+        obs_tensor = _obs_to_tensor(obs, device)
         with torch.no_grad():
             action = policy.sample_action(obs_tensor)
 
@@ -128,20 +148,98 @@ def collect_trajectory(env, policy: PolicyNetwork, device: str = "cpu"):
 def collect_population(env,
                        policy: PolicyNetwork,
                        population_size: int,
-                       device: str = "cpu"):
+                       device: str = "cpu",
+                       num_envs: int = 1,
+                       env_factory: Optional[Callable] = None):
     """Collect a population of environments.
     
     Args:
         env: A Gymnasium-compatible environment.
         policy: The policy network for action selection.
         population_size: Number of trajectories to collect.
+        num_envs: Number of environments to run concurrently.
+        env_factory: A no-argument environment constructor required when
+            num_envs > 1.
+
     Returns:
-        List of environments
+        List of trajectories.
     """
+    if population_size < 1:
+        raise ValueError("population_size must be >= 1")
+
+    if num_envs < 1:
+        raise ValueError("num_envs must be >= 1")
+
+    if num_envs > 1:
+        if env_factory is None:
+            raise ValueError("env_factory must be provided when num_envs > 1")
+        return collect_population_vectorized(
+            env_factory=env_factory,
+            policy=policy,
+            population_size=population_size,
+            num_envs=num_envs,
+            device=device,
+        )
+
     trajectories = []
     for _ in range(population_size):
-        env_instance = collect_trajectory(env, policy, device)
+        env_instance = env_factory() if env_factory is not None else env
+        env_instance = collect_trajectory(env_instance, policy, device)
         trajectories.append(env_instance.trajectory)
+    return trajectories
+
+
+def collect_population_vectorized(env_factory: Callable,
+                                  policy: PolicyNetwork,
+                                  population_size: int,
+                                  num_envs: int,
+                                  device: str = "cpu"):
+    """Collect trajectories in batches using batched policy inference.
+
+    Each batch instantiates up to ``num_envs`` environments and advances them
+    together by sampling all active actions in a single policy forward pass.
+    """
+    trajectories = []
+
+    while len(trajectories) < population_size:
+        batch_size = min(num_envs, population_size - len(trajectories))
+        envs = [env_factory() for _ in range(batch_size)]
+        observations = []
+        active = [True] * batch_size
+
+        for env_instance in envs:
+            obs, _ = env_instance.reset()
+            observations.append(obs)
+
+        while any(active):
+            active_indices = [
+                i for i, is_active in enumerate(active) if is_active
+            ]
+            obs_batch = torch.cat(
+                [
+                    _obs_to_tensor(observations[idx], device)
+                    for idx in active_indices
+                ],
+                dim=0,
+            )
+            with torch.no_grad():
+                actions = policy.sample_actions(obs_batch).cpu().tolist()
+
+            for action_idx, env_idx in enumerate(active_indices):
+                env_instance = envs[env_idx]
+                next_obs, _, terminated, truncated, _ = env_instance.step(
+                    int(actions[action_idx]))
+                observations[env_idx] = next_obs
+
+                if terminated or truncated:
+                    active[env_idx] = False
+                    trajectories.append(env_instance.trajectory)
+
+        for env_instance in envs:
+            close_fn = getattr(env_instance, "close", None)
+            if callable(close_fn):
+                close_fn()
+
     return trajectories
 
 
@@ -156,7 +254,7 @@ def select_elite_by_fraction(trajectories, elite_fraction: float):
     """
     sorted_trajectories = sorted(
         trajectories,
-        key=lambda e: e.rewards,
+        key=lambda e: e.rewards[-1] if e.rewards else float("-inf"),
         reverse=True,
     )
     n_elite = max(1, int(len(trajectories) * elite_fraction))

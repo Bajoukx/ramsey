@@ -22,6 +22,8 @@ flags.DEFINE_integer("n_blue_edges", 4, "Number of blue edges.")
 flags.DEFINE_string("render_mode", "animated",
                     "Render mode: 'static', 'animated', or None.")
 flags.DEFINE_string("device", "cpu", "Device to use: 'cpu' or 'cuda'.")
+flags.DEFINE_integer("num_envs", 8, "Number of parallel environments.")
+flags.DEFINE_integer("seed", 42, "Seed for environment reset.")
 
 
 class Policy(CategoricalMixin, Model):
@@ -41,6 +43,7 @@ class Policy(CategoricalMixin, Model):
             nn.Linear(256, self.num_actions))
 
     def compute(self, inputs, role):
+        del role
         mask_invalid = True
         if not mask_invalid:
             logits = self.net(inputs["states"])
@@ -60,17 +63,28 @@ def main(_):
         max_clique_size=max(clique_sizes),
         cumulative=True,
         reward_colors=[0, 1])
-    env = gym_ramsey_env.RamseyGymEnvV0(n_vertices=FLAGS.n_vertices,
-                                        clique_sizes=clique_sizes,
-                                        init_method_name="uncolored",
-                                        init_params=None,
-                                        reward_strategy=reward_strategy,
-                                        render_mode=FLAGS.render_mode,
-                                        device=FLAGS.device)
+    env_kwargs = dict(
+        n_vertices=FLAGS.n_vertices,
+        clique_sizes=clique_sizes,
+        init_method_name="uncolored",
+        init_params=None,
+        reward_strategy=reward_strategy,
+        render_mode=FLAGS.render_mode,
+        device=FLAGS.device,
+    )
+    if FLAGS.num_envs > 1:
+        env = gym_ramsey_env.make_sync_vector_env(
+            env_cls=gym_ramsey_env.RamseyGymEnvV0,
+            num_envs=FLAGS.num_envs,
+            **env_kwargs,
+        )
+        env.reset(seed=FLAGS.seed)
+    else:
+        env = gym_ramsey_env.RamseyGymEnvV0(**env_kwargs)
     env = wrap_env(env, wrapper="gymnasium")
 
     memory = RandomMemory(memory_size=5000,
-                          num_envs=1,
+                          num_envs=FLAGS.num_envs,
                           device=FLAGS.device,
                           replacement=False)
 

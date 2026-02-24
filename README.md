@@ -14,6 +14,23 @@ Even more so, the approach has been used concretly to find new bounds for the Ra
  - [ ] Verify the agent's Cross-Entropy method.
  - [ ] Explore and document strategies for reward function shapping.
 
+### Vectorized experiments
+
+The project now supports vectorized/parallel rollout collection in both
+experiment paths:
+
+- `experiments/skrl_wip.py`
+	- `--num_envs`: number of parallel Ramsey environments (default: `8`)
+	- `--seed`: reset seed for vector env initialization
+- `experiments/circulant_cem.py`
+	- `--num_envs`: number of concurrent environments used for batched CEM
+		collection (default: `8`)
+
+Example commands:
+
+- `python -m experiments.skrl_wip --num_envs=8 --device=cpu`
+- `python -m experiments.circulant_cem --num_envs=8 --population_size=128`
+
 
 # Dataset Creation
 
