@@ -78,7 +78,7 @@ def main(_):
             reward_colors=[0, 1],
             max_clique_sizes=clique_sizes,
             reward_loss=0.0,
-            reward_success=1.0,
+            reward_success=1.0
         )
         return gym_ramsey_env.RamseyGymEnvV2(
             n_vertices=n_vertices,

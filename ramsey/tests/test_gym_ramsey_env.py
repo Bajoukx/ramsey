@@ -1,6 +1,7 @@
 """Tests for Gymnasium wrapper environments."""
 
 import gymnasium
+import numpy as np
 import pytest
 import torch
 from unittest.mock import patch
@@ -211,6 +212,56 @@ class TestBaseWrapperStep:
             "Element 3 should be bool truncated"
         assert isinstance(info, dict), \
             "Element 4 should be dict info"
+
+    def test_base_wrapper_step_accepts_numpy_scalar_action(self):
+        """step() accepts scalar-like numpy array actions."""
+        env = DummyBaseRamseyGymEnv(
+            n_vertices=3,
+            clique_sizes=[3, 3],
+            init_method_name="uncolored",
+            reward_strategy=SimpleRewardStrategy(
+                max_clique_size=3,
+                reward_loss=-1.0,
+                terminal_reward_success=1.0,
+                reward_colors=[0, 1],
+            ),
+            action_strategy=DefaultActionStrategy(),
+        )
+
+        env.reset()
+        obs, reward, terminated, truncated, info = env.step(np.array([0]))
+
+        assert isinstance(obs, torch.Tensor)
+        assert isinstance(reward, (int, float))
+        assert isinstance(terminated, bool)
+        assert isinstance(truncated, bool)
+        assert isinstance(info, dict)
+        assert env.trajectory.actions[-1] == 0
+
+    def test_base_wrapper_step_accepts_torch_scalar_action(self):
+        """step() accepts scalar-like torch tensor actions."""
+        env = DummyBaseRamseyGymEnv(
+            n_vertices=3,
+            clique_sizes=[3, 3],
+            init_method_name="uncolored",
+            reward_strategy=SimpleRewardStrategy(
+                max_clique_size=3,
+                reward_loss=-1.0,
+                terminal_reward_success=1.0,
+                reward_colors=[0, 1],
+            ),
+            action_strategy=DefaultActionStrategy(),
+        )
+
+        env.reset()
+        obs, reward, terminated, truncated, info = env.step(torch.tensor([0]))
+
+        assert isinstance(obs, torch.Tensor)
+        assert isinstance(reward, (int, float))
+        assert isinstance(terminated, bool)
+        assert isinstance(truncated, bool)
+        assert isinstance(info, dict)
+        assert env.trajectory.actions[-1] == 0
 
 
 class TestBaseWrapperTrajectoryTracking:

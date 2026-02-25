@@ -119,10 +119,31 @@ class BaseRamseyGymEnv(gymnasium.Env, abc.ABC):
         Keeps track of episode rewards. Flattens the adjacency matrix for
         compatibility and performance.
         """
+        action = self._coerce_action_to_int(action)
         observation, reward, done, info = self.env.step(action)
         self.trajectory.add_step(observation, action, reward, info)
         truncated = self.truncate_episode()
         return observation, reward, done, truncated, info
+
+    @staticmethod
+    def _coerce_action_to_int(action) -> int:
+        """Convert scalar-like actions to Python int.
+
+        Handles native ints, NumPy scalar arrays, and scalar torch tensors.
+        """
+        if isinstance(action, np.ndarray):
+            if action.size != 1:
+                raise ValueError(
+                    "Action ndarray must be scalar-like (size == 1)")
+            return int(action.reshape(-1)[0])
+
+        if torch.is_tensor(action):
+            if action.numel() != 1:
+                raise ValueError(
+                    "Action tensor must be scalar-like (numel == 1)")
+            return int(action.item())
+
+        return int(action)
 
     def render(self, mode: str = "None"):
         """Renders the environment."""
